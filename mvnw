@@ -32,6 +32,28 @@
 set -euf
 [ "${MVNW_VERBOSE-}" != debug ] || set -x
 
+# This project targets Java 25. Prefer JDK 25 for Maven itself so tests
+# do not run on an older JAVA_HOME. Set MVNW_JAVA_HOME to override locally.
+if [ -n "${MVNW_JAVA_HOME-}" ]; then
+  JAVA_HOME="$MVNW_JAVA_HOME"
+elif [ -x "/usr/lib/jvm/jdk-25/bin/java" ]; then
+  JAVA_HOME="/usr/lib/jvm/jdk-25"
+elif [ -x "/usr/lib/jvm/java-25-openjdk/bin/java" ]; then
+  JAVA_HOME="/usr/lib/jvm/java-25-openjdk"
+elif [ -x "/opt/jdk-25/bin/java" ]; then
+  JAVA_HOME="/opt/jdk-25"
+fi
+
+if [ -n "${JAVA_HOME-}" ]; then
+  if [ ! -x "$JAVA_HOME/bin/java" ]; then
+    echo "JAVA_HOME is set to \"$JAVA_HOME\", but \"\$JAVA_HOME/bin/java\" does not exist." >&2
+    exit 1
+  fi
+  export JAVA_HOME
+  PATH="$JAVA_HOME/bin:$PATH"
+  export PATH
+fi
+
 # OS specific support.
 native_path() { printf %s\\n "$1"; }
 case "$(uname)" in

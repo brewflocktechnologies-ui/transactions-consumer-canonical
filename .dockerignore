@@ -1,0 +1,24 @@
+target/
+.git/
+.idea/
+.vscode/
+*.iml
+*.log
+.DS_Store
+
+# Local IDE / OS junk
+.classpath
+.project
+.settings/
+
+# Don't bake any local secrets / env files into the image
+.env
+*.env
+*.pem
+*.key
+
+# Local-only helper files
+docker-compose.*.yml
+README.md
+HELP.md
+postman/

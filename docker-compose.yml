@@ -1,0 +1,53 @@
+# =====================================================================
+# Local development stack — Oracle XE + the app.
+# Start with:   docker compose up --build
+# Tear down:    docker compose down -v   (drops the Oracle volume!)
+# =====================================================================
+
+services:
+
+  oracle:
+    image: gvenzl/oracle-xe:21-slim
+    container_name: send-txn-oracle
+    environment:
+      ORACLE_PASSWORD: ${ORACLE_SYSTEM_PASSWORD:-Oracle123}
+      APP_USER:        ${DB_USER:-SEND_TXN_OWNER}
+      APP_USER_PASSWORD: ${DB_PASS:-Oracle123}
+    ports:
+      - "1521:1521"
+    volumes:
+      - oracle-data:/opt/oracle/oradata
+    healthcheck:
+      test: ["CMD", "healthcheck.sh"]
+      interval: 15s
+      timeout: 10s
+      retries: 20
+      start_period: 60s
+
+  app:
+    build: .
+    image: transactions-consumer-canonical:dev
+    container_name: send-txn-app
+    depends_on:
+      oracle:
+        condition: service_healthy
+    environment:
+      SPRING_PROFILES_ACTIVE: dev
+      DB_URL:  jdbc:oracle:thin:@oracle:1521/XEPDB1
+      DB_USER: ${DB_USER:-SEND_TXN_OWNER}
+      DB_PASS: ${DB_PASS:-Oracle123}
+      APP_DB_SCHEMA: ${APP_DB_SCHEMA:-SEND_TXN_OWNER}
+      KAFKA_BOOTSTRAP: kafka:9092
+      CORS_ALLOWED_ORIGINS: "*"
+      OPENAPI_ENABLED: "true"
+    ports:
+      - "8080:8080"
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost:8080/actuator/health/readiness"]
+      interval: 20s
+      timeout: 5s
+      retries: 6
+      start_period: 60s
+
+volumes:
+  oracle-data:

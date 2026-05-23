@@ -32,6 +32,19 @@
 @SET __MVNW_ERROR__=
 @SET __MVNW_PSMODULEP_SAVE=%PSModulePath%
 @SET PSModulePath=
+@REM This project targets Java 25. Prefer JDK 25 for Maven itself so tests
+@REM do not run on an older JAVA_HOME. Set MVNW_JAVA_HOME to override locally.
+@IF NOT "%MVNW_JAVA_HOME%"=="" (
+  @IF EXIST "%MVNW_JAVA_HOME%\bin\java.exe" (
+    @SET "JAVA_HOME=%MVNW_JAVA_HOME%"
+  ) ELSE (
+    @echo MVNW_JAVA_HOME is set to "%MVNW_JAVA_HOME%", but bin\java.exe was not found. >&2
+    @exit /b 1
+  )
+) ELSE IF EXIST "C:\Program Files\Java\jdk-25.0.3\bin\java.exe" (
+  @SET "JAVA_HOME=C:\Program Files\Java\jdk-25.0.3"
+)
+@IF EXIST "%JAVA_HOME%\bin\java.exe" @SET "PATH=%JAVA_HOME%\bin;%PATH%"
 @FOR /F "usebackq tokens=1* delims==" %%A IN (`powershell -noprofile "& {$scriptDir='%~dp0'; $script='%__MVNW_ARG0_NAME__%'; icm -ScriptBlock ([Scriptblock]::Create((Get-Content -Raw '%~f0'))) -NoNewScope}"`) DO @(
   IF "%%A"=="MVN_CMD" (set __MVNW_CMD__=%%B) ELSE IF "%%B"=="" (echo %%A) ELSE (echo %%A=%%B)
 )

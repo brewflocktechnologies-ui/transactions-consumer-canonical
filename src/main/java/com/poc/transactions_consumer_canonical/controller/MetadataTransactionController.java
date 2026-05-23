@@ -5,6 +5,8 @@ import com.poc.transactions_consumer_canonical.exception.ResourceNotFoundExcepti
 import com.poc.transactions_consumer_canonical.metadata.MetadataRegistry;
 import com.poc.transactions_consumer_canonical.metadata.TableMetadata;
 import com.poc.transactions_consumer_canonical.service.MetadataTransactionService;
+import io.swagger.v3.oas.annotations.Operation;
+import io.swagger.v3.oas.annotations.tags.Tag;
 import jakarta.validation.constraints.Max;
 import jakarta.validation.constraints.Min;
 import jakarta.validation.constraints.Size;
@@ -34,12 +36,18 @@ import java.util.Map;
 @RequestMapping("/api/v2")
 @RequiredArgsConstructor
 @Validated
+@Tag(name = "send-transactions-v2",
+        description = "Generic metadata-driven endpoints. Payload shape follows the YAML files under "
+                + "classpath:metadata/. Call GET /api/v2/_metadata/{alias} for the column list.")
 public class MetadataTransactionController {
 
     private final MetadataTransactionService service;
     private final MetadataRegistry registry;
 
     /** Upsert any parent (with optional children) by alias and PK. */
+    @Operation(summary = "Upsert a row in any metadata-described table",
+            description = "Validates against YAML constraints, MERGEs with COALESCE null-guard, "
+                    + "fans out to children if the table has any. Path id always wins over body id.")
     @PutMapping("/{alias}/{id}")
     public ResponseEntity<Map<String, Object>> upsert(
             @PathVariable String alias,
@@ -49,7 +57,7 @@ public class MetadataTransactionController {
         return ResponseEntity.ok(service.upsert(alias, id, body));
     }
 
-    /** Get a parent + full nested child graph. */
+    @Operation(summary = "Fetch by id — returns parent with all nested children")
     @GetMapping("/{alias}/{id}")
     public ResponseEntity<Map<String, Object>> findById(
             @PathVariable String alias,
@@ -60,7 +68,7 @@ public class MetadataTransactionController {
                 .orElseThrow(() -> new ResourceNotFoundException(alias, id));
     }
 
-    /** Paginated parent-only list (no child data). */
+    @Operation(summary = "Paginated parent-only list (no child data)")
     @GetMapping("/{alias}")
     public ResponseEntity<PagedResponse<Map<String, Object>>> findAll(
             @PathVariable String alias,
@@ -70,7 +78,7 @@ public class MetadataTransactionController {
         return ResponseEntity.ok(service.findAll(alias, page, size));
     }
 
-    /** Delete a parent and all its child rows. */
+    @Operation(summary = "Delete a parent and cascade-delete its children (service-side ordering)")
     @DeleteMapping("/{alias}/{id}")
     public ResponseEntity<Void> delete(
             @PathVariable String alias,
@@ -84,13 +92,17 @@ public class MetadataTransactionController {
     // Discovery — mitigates loss of Swagger/IDE auto-complete
     // ──────────────────────────────────────────────────────────
 
-    /** Describe a single table (column metadata + child references). */
+    @Operation(summary = "Describe one metadata-registered table",
+            description = "Returns the column list, child references, audit/CLOB/converter flags. "
+                    + "Useful for client codegen and replaces the loss of typed Swagger schemas for v2.")
+    @Tag(name = "metadata-discovery")
     @GetMapping("/_metadata/{alias}")
     public ResponseEntity<TableMetadata> describe(@PathVariable String alias) {
         return ResponseEntity.ok(registry.require(alias));
     }
 
-    /** List every loaded table — column lists, children, etc. */
+    @Operation(summary = "List every loaded table")
+    @Tag(name = "metadata-discovery")
     @GetMapping("/_metadata")
     public ResponseEntity<Collection<TableMetadata>> describeAll() {
         return ResponseEntity.ok(registry.all());
