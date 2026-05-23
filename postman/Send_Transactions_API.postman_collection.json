@@ -1,0 +1,321 @@
+{
+  "info": {
+    "_postman_id": "c3a1f2b4-d5e6-4789-bcde-f01234567890",
+    "name": "Send Transactions API",
+    "description": "REST API collection for SEND_TXN_OWNER schema.\nBase URL and tranId are collection variables — edit them under the Variables tab.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:8080",
+      "type": "string"
+    },
+    {
+      "key": "tranId",
+      "value": "TXN-SEND-001",
+      "type": "string"
+    }
+  ],
+  "item": [
+    {
+      "name": "Upsert Operations",
+      "item": [
+        {
+          "name": "1. Upsert - Parent Only (Minimal)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"PENDING\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 1500.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"refId\": \"REF-2024-ABC\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Upserts the parent SEND_TRANSACTIONS row only. No child tables are touched."
+          }
+        },
+        {
+          "name": "2. Upsert - With Transaction Detail",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 1500.00,\n  \"tranCurr\": \"USD\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false,\n  \"tranDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"paymtRef\": \"PAYREF-20241115-001\",\n    \"unqTranRef\": \"UTR-ABCDEF123456\",\n    \"paymtType\": \"CARD\",\n    \"fundSrc\": \"CHECKING\",\n    \"tranSetlAmt\": 1500.00,\n    \"merchCatCd\": \"5411\",\n    \"tranfrAcptNam\": \"ACME RETAIL INC\",\n    \"tranfrAcptCity\": \"New York\",\n    \"tranfrAcptSt\": \"NY\",\n    \"tranfrAcptCntryNam\": \"USA\",\n    \"tranfrAcptPostCd\": \"10001\",\n    \"origRqstPyld\": \"{\\\"amount\\\":1500,\\\"currency\\\":\\\"USD\\\"}\",\n    \"origRespPyld\": \"{\\\"status\\\":\\\"approved\\\",\\\"authCode\\\":\\\"AUTH123\\\"}\",\n    \"msgVersion\": \"02\",\n    \"procId\": \"PROC-001\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Upserts parent + SEND_TRAN_DTL (1:1 child)."
+          }
+        },
+        {
+          "name": "3. Upsert - With Recipient Detail",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 1500.00,\n  \"tranCurr\": \"USD\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false,\n  \"recipDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"sendFirstNam\": \"John\",\n    \"sendMidNam\": \"A\",\n    \"sendLstNam\": \"Smith\",\n    \"sendPhn\": \"+12125550101\",\n    \"sendEmail\": \"john.smith@example.com\",\n    \"sendDob\": \"1985-06-20\",\n    \"sendNatl\": \"US\",\n    \"sendAcctNum\": \"ACC-001234\",\n    \"sendAcctNumType\": \"DDA\",\n    \"sendStLine1\": \"123 Main St\",\n    \"sendCity\": \"New York\",\n    \"sendSt\": \"NY\",\n    \"sendCntryNam\": \"US\",\n    \"sendPostCd\": \"10001\",\n    \"recipFirstNam\": \"Jane\",\n    \"recipLstNam\": \"Doe\",\n    \"recipPhn\": \"+14155550199\",\n    \"recipEmail\": \"jane.doe@example.com\",\n    \"recipDob\": \"1990-03-14\",\n    \"recipNatl\": \"MX\",\n    \"recipAcctNum\": \"ACC-005678\",\n    \"recipAcctNumType\": \"SAVINGS\",\n    \"recipStLine1\": \"456 Reforma Ave\",\n    \"recipCity\": \"Mexico City\",\n    \"recipCntryNam\": \"MX\",\n    \"recipPostCd\": \"06600\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Upserts parent + SEND_RECIP_DTL (1:1 child). Sender and recipient PII."
+          }
+        },
+        {
+          "name": "4. Upsert - Full Payload (All Children)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"COMPLETED\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"ntwrkRespCd\": \"00\",\n  \"ntwrkRespCdDesc\": \"Approved\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"refId\": \"REF-2024-ABC\",\n  \"cvcStat\": \"PASS\",\n  \"cvcRespCd\": \"M\",\n  \"namStat\": \"MATCH\",\n  \"acctNum\": \"4111111111111111\",\n  \"acctType\": \"CREDIT\",\n  \"acctHoldNam\": \"JOHN A SMITH\",\n  \"useCase\": \"P2P\",\n  \"msgType\": \"0200\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false,\n  \"tranDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"paymtRef\": \"PAYREF-20241115-001\",\n    \"unqTranRef\": \"UTR-ABCDEF123456\",\n    \"paymtType\": \"CARD\",\n    \"fundSrc\": \"CHECKING\",\n    \"tranSetlAmt\": 2750.00,\n    \"merchCatCd\": \"5411\",\n    \"tranfrAcptNam\": \"ACME RETAIL INC\",\n    \"tranfrAcptId\": \"MERCH-9876\",\n    \"tranfrAcptCity\": \"New York\",\n    \"tranfrAcptSt\": \"NY\",\n    \"tranfrAcptCntryNam\": \"USA\",\n    \"tranfrAcptPostCd\": \"10001\",\n    \"tranfrAcptStLine1\": \"789 Broadway\",\n    \"origRqstPyld\": \"{\\\"amount\\\":2750,\\\"currency\\\":\\\"USD\\\"}\",\n    \"origRespPyld\": \"{\\\"status\\\":\\\"approved\\\",\\\"authCode\\\":\\\"AUTH123\\\"}\",\n    \"msgVersion\": \"02\",\n    \"procId\": \"PROC-001\",\n    \"acqCntryNam\": \"USA\",\n    \"acqIca\": 12345,\n    \"regulatedRateTypeCd\": \"STD\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  },\n  \"recipDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"sendFirstNam\": \"John\",\n    \"sendMidNam\": \"A\",\n    \"sendLstNam\": \"Smith\",\n    \"sendPhn\": \"+12125550101\",\n    \"sendEmail\": \"john.smith@example.com\",\n    \"sendDob\": \"1985-06-20\",\n    \"sendNatl\": \"US\",\n    \"sendAcctNum\": \"ACC-001234\",\n    \"sendAcctNumType\": \"DDA\",\n    \"sendStLine1\": \"123 Main St\",\n    \"sendCity\": \"New York\",\n    \"sendSt\": \"NY\",\n    \"sendCntryNam\": \"US\",\n    \"sendPostCd\": \"10001\",\n    \"recipFirstNam\": \"Jane\",\n    \"recipLstNam\": \"Doe\",\n    \"recipPhn\": \"+14155550199\",\n    \"recipEmail\": \"jane.doe@example.com\",\n    \"recipDob\": \"1990-03-14\",\n    \"recipNatl\": \"MX\",\n    \"recipAcctNum\": \"ACC-005678\",\n    \"recipAcctNumType\": \"SAVINGS\",\n    \"recipStLine1\": \"456 Reforma Ave\",\n    \"recipCity\": \"Mexico City\",\n    \"recipCntryNam\": \"MX\",\n    \"recipPostCd\": \"06600\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  },\n  \"addrDtl\": [\n    {\n      \"addrType\": \"SENDER\",\n      \"stLine1\": \"123 Main St\",\n      \"city\": \"New York\",\n      \"st\": \"NY\",\n      \"cntryNam\": \"US\",\n      \"postCd\": \"10001\",\n      \"addrStat\": \"VERIFIED\",\n      \"crteUserNam\": \"sysuser\"\n    },\n    {\n      \"addrType\": \"RECIPIENT\",\n      \"stLine1\": \"456 Reforma Ave\",\n      \"city\": \"Mexico City\",\n      \"cntryNam\": \"MX\",\n      \"postCd\": \"06600\",\n      \"addrStat\": \"UNVERIFIED\",\n      \"crteUserNam\": \"sysuser\"\n    }\n  ]\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Full upsert: parent + SEND_TRAN_DTL + SEND_RECIP_DTL + 2 rows in SEND_TRAN_ADDR_DTL. Run GET by ID after this to see the full nested graph."
+          }
+        },
+        {
+          "name": "5. Upsert - Update Status Only (Re-upsert)",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"FAILED\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"errCd\": \"ERR-5001\",\n  \"errCdDesc\": \"Insufficient funds\",\n  \"ntwrkRespCd\": \"51\",\n  \"ntwrkRespCdDesc\": \"Insufficient funds\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Re-upserts the same tranId with curStat=FAILED and error details. Child rows (tranDtl, recipDtl, addrDtl) are NOT included so they remain untouched."
+          }
+        },
+        {
+          "name": "6. Upsert - Clear All Addresses",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false,\n  \"addrDtl\": []\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Passing addrDtl as an empty array [] deletes ALL existing SEND_TRAN_ADDR_DTL rows for this tranId. Omitting addrDtl entirely would leave them untouched."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Query Operations",
+      "item": [
+        {
+          "name": "7. GET by ID - Full Graph",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Returns the full nested graph: parent + tranDtl + recipDtl + addrDtl[]."
+          }
+        },
+        {
+          "name": "8. GET All - Default Page",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions"]
+            },
+            "description": "Returns page 0 with 20 records (default). Parent rows only — no child data in list view."
+          }
+        },
+        {
+          "name": "9. GET All - Custom Pagination",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions?page=0&size=5",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions"],
+              "query": [
+                { "key": "page", "value": "0", "description": "Zero-based page number" },
+                { "key": "size", "value": "5", "description": "Records per page (max 100)" }
+              ]
+            },
+            "description": "Paginated list with custom page size."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Delete Operations",
+      "item": [
+        {
+          "name": "10. DELETE Transaction",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/{{tranId}}",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "{{tranId}}"]
+            },
+            "description": "Deletes children first (no DB cascade), then the parent. Returns 204 No Content on success."
+          }
+        }
+      ]
+    },
+    {
+      "name": "Error Cases",
+      "item": [
+        {
+          "name": "11. 400 - Missing Required tranType",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"tranAmt\": 500.00,\n  \"tranCurr\": \"USD\",\n  \"nonFinTxn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/TXN-BAD-001",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "TXN-BAD-001"]
+            },
+            "description": "Expects 400 Bad Request. tranType is @NotBlank — fieldErrors will show the validation message."
+          }
+        },
+        {
+          "name": "12. 400 - Missing Required tranCrteDt",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranAmt\": 500.00,\n  \"tranCurr\": \"USD\",\n  \"nonFinTxn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/TXN-BAD-002",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "TXN-BAD-002"]
+            },
+            "description": "Expects 400 Bad Request. tranCrteDt is @NotNull."
+          }
+        },
+        {
+          "name": "13. 400 - Child tranDtl Missing tranCrteDt",
+          "request": {
+            "method": "PUT",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"nonFinTxn\": false,\n  \"tranDtl\": {\n    \"paymtType\": \"CARD\"\n  }\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/TXN-BAD-003",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "TXN-BAD-003"]
+            },
+            "description": "Expects 400 Bad Request. tranDtl.tranCrteDt is @NotNull and is missing."
+          }
+        },
+        {
+          "name": "14. 400 - Page Size Exceeds Max (>100)",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions?page=0&size=200",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions"],
+              "query": [
+                { "key": "page", "value": "0" },
+                { "key": "size", "value": "200" }
+              ]
+            },
+            "description": "Expects 400 Bad Request. size is @Max(100)."
+          }
+        },
+        {
+          "name": "15. 404 - GET Non-Existent ID",
+          "request": {
+            "method": "GET",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/DOES-NOT-EXIST",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "DOES-NOT-EXIST"]
+            },
+            "description": "Expects 404 Not Found from GlobalExceptionHandler."
+          }
+        },
+        {
+          "name": "16. 404 - DELETE Non-Existent ID",
+          "request": {
+            "method": "DELETE",
+            "header": [],
+            "url": {
+              "raw": "{{baseUrl}}/api/v1/send-transactions/DOES-NOT-EXIST",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "v1", "send-transactions", "DOES-NOT-EXIST"]
+            },
+            "description": "Expects 404 Not Found. Service checks existence before deleting."
+          }
+        }
+      ]
+    }
+  ]
+}
