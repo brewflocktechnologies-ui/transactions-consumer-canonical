@@ -1,0 +1,71 @@
+# =====================================================================
+# SEND_RECIP_DTL — 1:1 child of SEND_TRANSACTIONS (PK = FK = TRAN_ID)
+# Demonstrates DATE columns (sendDob, recipDob) and CLOB columns.
+# =====================================================================
+name: SEND_RECIP_DTL
+schema: SEND_TXN_OWNER
+alias: send-recip-dtl
+pk: TRAN_ID
+pkJsonName: tranId
+defaultOrderBy: TRAN_CRTE_DT DESC
+
+columns:
+  - { jsonName: tranId,                 dbColumn: TRAN_ID,                 sqlType: VARCHAR,   maxLength: 50,  pk: true, required: true, nullGuard: false }
+
+  # ── Sender identity ────────────────────────────────────────────────
+  - { jsonName: sendFirstNam,           dbColumn: SEND_FIRST_NAM,          sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: sendMidNam,             dbColumn: SEND_MID_NAM,            sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: sendLstNam,             dbColumn: SEND_LST_NAM,            sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: sendPhn,                dbColumn: SEND_PHN,                sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: sendEmail,              dbColumn: SEND_EMAIL,              sqlType: VARCHAR,   maxLength: 254 }
+
+  # ── DATE column (LocalDate) ────────────────────────────────────────
+  - { jsonName: sendDob,                dbColumn: SEND_DOB,                sqlType: DATE }
+
+  - { jsonName: sendNatl,               dbColumn: SEND_NATL,               sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: sendBirthCntryNam,      dbColumn: SEND_BIRTH_CNTRY_NAM,    sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: sendAcctNum,            dbColumn: SEND_ACCT_NUM,           sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: sendAcctUri,            dbColumn: SEND_ACCT_URI,           sqlType: VARCHAR,   maxLength: 60 }
+
+  # ── CLOB (TO_CLOB CASE WHEN) ───────────────────────────────────────
+  - { jsonName: sendGovtIdUri,          dbColumn: SEND_GOVT_ID_URI,        sqlType: CLOB, clob: true, nullGuard: false }
+
+  - { jsonName: sendAcctNumType,        dbColumn: SEND_ACCT_NUM_TYPE,      sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: sendCardNum,            dbColumn: SEND_CARD_NUM,           sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: sendCardExpirDt,        dbColumn: SEND_CARD_EXPIR_DT,      sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: sendStLine1,            dbColumn: SEND_ST_LINE1,           sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: sendStLine2,            dbColumn: SEND_ST_LINE2,           sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: sendCity,               dbColumn: SEND_CITY,               sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: sendSt,                 dbColumn: SEND_ST,                 sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: sendCntryNam,           dbColumn: SEND_CNTRY_NAM,          sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: sendPostCd,             dbColumn: SEND_POST_CD,            sqlType: VARCHAR,   maxLength: 10 }
+
+  # ── Recipient identity ─────────────────────────────────────────────
+  - { jsonName: recipFirstNam,          dbColumn: RECIP_FIRST_NAM,         sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: recipMidNam,            dbColumn: RECIP_MID_NAM,           sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: recipLstNam,            dbColumn: RECIP_LST_NAM,           sqlType: VARCHAR,   maxLength: 80 }
+  - { jsonName: recipPhn,               dbColumn: RECIP_PHN,               sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: recipEmail,             dbColumn: RECIP_EMAIL,             sqlType: VARCHAR,   maxLength: 254 }
+  - { jsonName: recipDob,               dbColumn: RECIP_DOB,               sqlType: DATE }
+  - { jsonName: recipNatl,              dbColumn: RECIP_NATL,              sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: recipBirthCntryNam,     dbColumn: RECIP_BIRTH_CNTRY_NAM,   sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: recipAcctNum,           dbColumn: RECIP_ACCT_NUM,          sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: recipAcctUri,           dbColumn: RECIP_ACCT_URI,          sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: recipGovtIdUri,         dbColumn: RECIP_GOVT_ID_URI,       sqlType: CLOB, clob: true, nullGuard: false }
+  - { jsonName: recipAcctNumType,       dbColumn: RECIP_ACCT_NUM_TYPE,     sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: recipCardNum,           dbColumn: RECIP_CARD_NUM,          sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: recipCardExpirDt,       dbColumn: RECIP_CARD_EXPIR_DT,     sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: recipStLine1,           dbColumn: RECIP_ST_LINE1,          sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: recipStLine2,           dbColumn: RECIP_ST_LINE2,          sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: recipCity,              dbColumn: RECIP_CITY,              sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: recipSt,                dbColumn: RECIP_ST,                sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: recipCntryNam,          dbColumn: RECIP_CNTRY_NAM,         sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: recipPostCd,            dbColumn: RECIP_POST_CD,           sqlType: VARCHAR,   maxLength: 10 }
+
+  # ── Audit ──────────────────────────────────────────────────────────
+  - { jsonName: crteTs,                 dbColumn: CRTE_TS,                 sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: crteUserNam,            dbColumn: CRTE_USER_NAM,           sqlType: VARCHAR,   maxLength: 20, insertOnly: true }
+  - { jsonName: updtTs,                 dbColumn: UPDT_TS,                 sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: updtUserNam,            dbColumn: UPDT_USER_NAM,           sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: tranCrteDt,             dbColumn: TRAN_CRTE_DT,            sqlType: TIMESTAMP, required: true }
+  - { jsonName: rplctnUpdtTs,           dbColumn: RPLCTN_UPDT_TS,          sqlType: TIMESTAMP, audit: true, readOnly: true }

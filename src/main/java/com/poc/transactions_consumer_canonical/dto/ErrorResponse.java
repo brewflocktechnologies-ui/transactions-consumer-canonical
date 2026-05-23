@@ -19,5 +19,6 @@ public class ErrorResponse {
     private String message;
     /** ISO-8601 timestamp in UTC — always includes offset so API consumers can parse unambiguously. */
     private OffsetDateTime timestamp;
+    private String traceId;
     private Map<String, String> fieldErrors;
 }

@@ -1,0 +1,63 @@
+# =====================================================================
+# SEND_TRAN_DTL — 1:1 child of SEND_TRANSACTIONS (PK = FK = TRAN_ID)
+# Demonstrates CLOB handling via clob:true (emits TO_CLOB CASE WHEN).
+# =====================================================================
+name: SEND_TRAN_DTL
+schema: SEND_TXN_OWNER
+alias: send-tran-dtl
+pk: TRAN_ID
+pkJsonName: tranId
+defaultOrderBy: TRAN_CRTE_DT DESC
+
+columns:
+  - { jsonName: tranId,                 dbColumn: TRAN_ID,                 sqlType: VARCHAR,   maxLength: 50,  pk: true, required: true, nullGuard: false }
+  - { jsonName: paymtRef,               dbColumn: PAYMT_REF,               sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: unqTranRef,             dbColumn: UNQ_TRAN_REF,            sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: acqCntryNam,            dbColumn: ACQ_CNTRY_NAM,           sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: acqIca,                 dbColumn: ACQ_ICA,                 sqlType: NUMERIC }
+  - { jsonName: fundSrc,                dbColumn: FUND_SRC,                sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: ichgRateDsgn,           dbColumn: ICHG_RATE_DSGN,          sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: merchCatCd,             dbColumn: MERCH_CAT_CD,            sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: paymtType,              dbColumn: PAYMT_TYPE,              sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: pointServIntrctn,       dbColumn: POINT_SERV_INTRCTN,      sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: tranPrps,               dbColumn: TRAN_PRPS,               sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: tranSetlAmt,            dbColumn: TRAN_SETL_AMT,           sqlType: NUMERIC }
+
+  # ── CLOB columns (TO_CLOB CASE WHEN; bound as VARCHAR) ─────────────
+  - { jsonName: bncGtwyRqst,            dbColumn: BNC_GTWY_RQST,           sqlType: CLOB, clob: true, nullGuard: false }
+  - { jsonName: bncGtwyResp,            dbColumn: BNC_GTWY_RESP,           sqlType: CLOB, clob: true, nullGuard: false }
+  - { jsonName: origRqstPyld,           dbColumn: ORIG_RQST_PYLD,          sqlType: CLOB, clob: true, nullGuard: false }
+  - { jsonName: origRespPyld,           dbColumn: ORIG_RESP_PYLD,          sqlType: CLOB, clob: true, nullGuard: false }
+
+  - { jsonName: tranfrAcptId,           dbColumn: TRANFR_ACPT_ID,          sqlType: VARCHAR,   maxLength: 100 }
+  - { jsonName: tranfrAcptNam,          dbColumn: TRANFR_ACPT_NAM,         sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: mcAssgnMerch,           dbColumn: MC_ASSGN_MERCH,          sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: paymtFacltrId,          dbColumn: PAYMT_FACILTR_ID,        sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: subMerchId,             dbColumn: SUB_MERCH_ID,            sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: tranfrTrmlId,           dbColumn: TRANFR_TRML_ID,          sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: tranfrAcptStLine1,      dbColumn: TRANFR_ACPT_ST_LINE1,    sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: tranfrAcptStLine2,      dbColumn: TRANFR_ACPT_ST_LINE2,    sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: tranfrAcptCity,         dbColumn: TRANFR_ACPT_CITY,        sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: tranfrAcptSt,           dbColumn: TRANFR_ACPT_ST,          sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: tranfrAcptCntryNam,     dbColumn: TRANFR_ACPT_CNTRY_NAM,   sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: tranfrAcptPostCd,       dbColumn: TRANFR_ACPT_POST_CD,     sqlType: VARCHAR,   maxLength: 60 }
+
+  # ── Audit ──────────────────────────────────────────────────────────
+  - { jsonName: crteTs,                 dbColumn: CRTE_TS,                 sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: crteUserNam,            dbColumn: CRTE_USER_NAM,           sqlType: VARCHAR,   maxLength: 20, insertOnly: true }
+  - { jsonName: updtTs,                 dbColumn: UPDT_TS,                 sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: updtUserNam,            dbColumn: UPDT_USER_NAM,           sqlType: VARCHAR,   maxLength: 20 }
+
+  - { jsonName: eventId,                dbColumn: EVENT_ID,                sqlType: VARCHAR,   maxLength: 40 }
+  - { jsonName: eventTs,                dbColumn: EVENT_TS,                sqlType: TIMESTAMP }
+  - { jsonName: eventCorltnId,          dbColumn: EVENT_CORLTN_ID,         sqlType: VARCHAR,   maxLength: 40 }
+  - { jsonName: msgVersion,             dbColumn: MSG_VERSION,             sqlType: VARCHAR,   maxLength: 2 }
+  - { jsonName: tranCrteDt,             dbColumn: TRAN_CRTE_DT,            sqlType: TIMESTAMP, required: true }
+  - { jsonName: rplctnUpdtTs,           dbColumn: RPLCTN_UPDT_TS,          sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: tranTypeIndCd,          dbColumn: TRAN_TYPE_IND_CD,        sqlType: VARCHAR,   maxLength: 5 }
+  - { jsonName: regulatedRateTypeCd,    dbColumn: REGULATED_RATE_TYPE_CD,  sqlType: VARCHAR,   maxLength: 5 }
+  - { jsonName: cvcRespDesc,            dbColumn: CVC_RESP_DESC,           sqlType: VARCHAR,   maxLength: 500 }
+  - { jsonName: procId,                 dbColumn: PROC_ID,                 sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: acqIdenCd,              dbColumn: ACQ_IDEN_CD,             sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: tranfrAcptMpgId,        dbColumn: TRANFR_ACPT_MPG_ID,      sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: tranfrAcptMerchValue,   dbColumn: TRANFR_ACPT_MERCH_VALUE, sqlType: VARCHAR,   maxLength: 20 }

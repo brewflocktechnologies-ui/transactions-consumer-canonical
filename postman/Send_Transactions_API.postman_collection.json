@@ -15,6 +15,18 @@
       "key": "tranId",
       "value": "TXN-SEND-001",
       "type": "string"
+    },
+    {
+      "key": "tranIdV2",
+      "value": "TXN-METADATA-001",
+      "type": "string",
+      "description": "Dedicated id for the metadata-driven (v2) folder so v1 and v2 examples don't collide."
+    },
+    {
+      "key": "addrIdV2",
+      "value": "ADDR-METADATA-FIXED-001",
+      "type": "string",
+      "description": "A client-supplied address id used in the addr_dtl merge-and-prune demo. When the service sees an explicit id it MERGEs that row instead of generating a new UUID."
     }
   ],
   "item": [
@@ -314,6 +326,460 @@
             },
             "description": "Expects 404 Not Found. Service checks existence before deleting."
           }
+        }
+      ]
+    },
+    {
+      "name": "Metadata-Driven (v2) API",
+      "description": "Tests for the new generic, YAML-metadata-driven endpoints at /api/v2/*.\n\nThe routes are:\n  PUT    /api/v2/{alias}/{id}    upsert (parent + children if alias is a root table)\n  GET    /api/v2/{alias}/{id}    fetch with nested children\n  GET    /api/v2/{alias}         paginated parent rows (no children)\n  DELETE /api/v2/{alias}/{id}    cascade-delete\n  GET    /api/v2/_metadata       list all loaded tables\n  GET    /api/v2/_metadata/{alias}   describe one table\n\nAliases come from the YAML files under src/main/resources/metadata/:\n  send-transactions  send-tran-dtl  send-recip-dtl  send-tran-addr-dtl\n\nAdding a new column = one line in YAML + DDL change. No Java changes.",
+      "item": [
+        {
+          "name": "Discovery",
+          "item": [
+            {
+              "name": "v2-D1. List all loaded tables",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/_metadata",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "_metadata"]
+                },
+                "description": "Returns the column metadata for every loaded YAML. Mitigation for loss-of-Swagger after the move to Map<String,Object> payloads."
+              }
+            },
+            {
+              "name": "v2-D2. Describe send-transactions",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/_metadata/send-transactions",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "_metadata", "send-transactions"]
+                },
+                "description": "Returns the columns, child references, audit/CLOB/converter flags for a single table — useful for client codegen or API doc generation."
+              }
+            },
+            {
+              "name": "v2-D3. Describe send-tran-dtl (CLOBs)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/_metadata/send-tran-dtl",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "_metadata", "send-tran-dtl"]
+                },
+                "description": "Look for clob:true on bncGtwyRqst / bncGtwyResp / origRqstPyld / origRespPyld."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Upsert Operations",
+          "item": [
+            {
+              "name": "v2-U1. Upsert - Parent Only (Minimal)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 1500.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Inserts the parent only. The response is a JSON Map (not a typed POJO) shaped from the metadata column list."
+              }
+            },
+            {
+              "name": "v2-U2. Upsert - Full Payload (All Children + CLOB + DATE + auto-UUID)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"COMPLETED\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"ntwrkRespCd\": \"00\",\n  \"ntwrkRespCdDesc\": \"Approved\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"refId\": \"REF-2024-ABC\",\n  \"cvcStat\": \"PASS\",\n  \"cvcRespCd\": \"M\",\n  \"namStat\": \"MATCH\",\n  \"acctNum\": \"4111111111111111\",\n  \"acctType\": \"CREDIT\",\n  \"acctHoldNam\": \"JOHN A SMITH\",\n  \"useCase\": \"P2P\",\n  \"msgType\": \"0200\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": true,\n  \"tranDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"paymtRef\": \"PAYREF-20241115-001\",\n    \"unqTranRef\": \"UTR-ABCDEF123456\",\n    \"paymtType\": \"CARD\",\n    \"fundSrc\": \"CHECKING\",\n    \"tranSetlAmt\": 2750.00,\n    \"merchCatCd\": \"5411\",\n    \"tranfrAcptNam\": \"ACME RETAIL INC\",\n    \"tranfrAcptId\": \"MERCH-9876\",\n    \"tranfrAcptCity\": \"New York\",\n    \"tranfrAcptSt\": \"NY\",\n    \"tranfrAcptCntryNam\": \"USA\",\n    \"tranfrAcptPostCd\": \"10001\",\n    \"tranfrAcptStLine1\": \"789 Broadway\",\n    \"bncGtwyRqst\": \"{\\\"requestId\\\":\\\"BNC-RQ-001\\\",\\\"payload\\\":\\\"large clob written via TO_CLOB CASE WHEN\\\"}\",\n    \"bncGtwyResp\": \"{\\\"responseId\\\":\\\"BNC-RS-001\\\",\\\"status\\\":\\\"OK\\\"}\",\n    \"origRqstPyld\": \"{\\\"amount\\\":2750,\\\"currency\\\":\\\"USD\\\"}\",\n    \"origRespPyld\": \"{\\\"status\\\":\\\"approved\\\",\\\"authCode\\\":\\\"AUTH123\\\"}\",\n    \"msgVersion\": \"02\",\n    \"procId\": \"PROC-001\",\n    \"acqCntryNam\": \"USA\",\n    \"acqIca\": 12345,\n    \"regulatedRateTypeCd\": \"STD\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  },\n  \"recipDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"sendFirstNam\": \"John\",\n    \"sendMidNam\": \"A\",\n    \"sendLstNam\": \"Smith\",\n    \"sendPhn\": \"+12125550101\",\n    \"sendEmail\": \"john.smith@example.com\",\n    \"sendDob\": \"1985-06-20\",\n    \"sendNatl\": \"US\",\n    \"sendAcctNum\": \"ACC-001234\",\n    \"sendAcctNumType\": \"DDA\",\n    \"sendStLine1\": \"123 Main St\",\n    \"sendCity\": \"New York\",\n    \"sendSt\": \"NY\",\n    \"sendCntryNam\": \"US\",\n    \"sendPostCd\": \"10001\",\n    \"recipFirstNam\": \"Jane\",\n    \"recipLstNam\": \"Doe\",\n    \"recipPhn\": \"+14155550199\",\n    \"recipEmail\": \"jane.doe@example.com\",\n    \"recipDob\": \"1990-03-14\",\n    \"recipNatl\": \"MX\",\n    \"recipAcctNum\": \"ACC-005678\",\n    \"recipAcctNumType\": \"SAVINGS\",\n    \"recipStLine1\": \"456 Reforma Ave\",\n    \"recipCity\": \"Mexico City\",\n    \"recipCntryNam\": \"MX\",\n    \"recipPostCd\": \"06600\",\n    \"sendGovtIdUri\": \"https://idverif.example.com/clob-uri-stored-as-CLOB-via-TO_CLOB\",\n    \"crteUserNam\": \"sysuser\",\n    \"updtUserNam\": \"sysuser\"\n  },\n  \"addrDtl\": [\n    {\n      \"id\": \"{{addrIdV2}}\",\n      \"addrType\": \"SENDER\",\n      \"stLine1\": \"123 Main St\",\n      \"city\": \"New York\",\n      \"st\": \"NY\",\n      \"cntryNam\": \"US\",\n      \"postCd\": \"10001\",\n      \"addrStat\": \"VERIFIED\",\n      \"crteUserNam\": \"sysuser\"\n    },\n    {\n      \"addrType\": \"RECIPIENT\",\n      \"stLine1\": \"456 Reforma Ave\",\n      \"city\": \"Mexico City\",\n      \"cntryNam\": \"MX\",\n      \"postCd\": \"06600\",\n      \"addrStat\": \"UNVERIFIED\",\n      \"crteUserNam\": \"sysuser\"\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Demonstrates every special case in one call:\n  - CLOB via clob:true → TO_CLOB CASE WHEN (bncGtwyRqst, bncGtwyResp, origRqstPyld, origRespPyld, sendGovtIdUri)\n  - DATE round-trip (sendDob, recipDob)\n  - NUMBER(1,0) ↔ Boolean via converter:BOOLEAN_AS_INT (nonFinTxn: true)\n  - 1:1 child upsert (tranDtl, recipDtl)\n  - 1:many child MERGE with one client-supplied id (addrDtl[0]) and one auto-UUID (addrDtl[1])\n  - Audit columns SYSTIMESTAMP-populated server-side\n\nRun the GET request next to see the full nested graph reflected back."
+              }
+            },
+            {
+              "name": "v2-U3. Null-guard demo (only tranAmt updated, others preserved)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"tranType\": \"SEND\",\n  \"tranAmt\": 9999.99,\n  \"curStat\": null,\n  \"ntwrkCd\": null,\n  \"updtUserNam\": \"nullguard-test\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Run AFTER v2-U2.\n\nSends explicit nulls for curStat and ntwrkCd. The generated MERGE uses COALESCE(:p, t.COL) — so the existing non-null values in the DB (curStat=COMPLETED, ntwrkCd=MASTERCARD from v2-U2) survive. Only tranAmt changes.\n\nRequired fields (tranCrteDt, tranType) must still be sent because metadata validator enforces required on every upsert."
+              }
+            },
+            {
+              "name": "v2-U4. CLOB round-trip (large bncGtwyRqst)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"nonFinTxn\": false,\n  \"tranDtl\": {\n    \"tranCrteDt\": \"2024-11-15T09:30:00\",\n    \"bncGtwyRqst\": \"AAAAAAAAAA-clob-payload-block-001-AAAAAAAAAA-clob-payload-block-002-AAAAAAAAAA-clob-payload-block-003-AAAAAAAAAA-clob-payload-block-004-AAAAAAAAAA-clob-payload-block-005-AAAAAAAAAA-clob-payload-block-006-AAAAAAAAAA-clob-payload-block-007-AAAAAAAAAA-clob-payload-block-008-AAAAAAAAAA-clob-payload-block-009-AAAAAAAAAA-clob-payload-block-010-AAAAAAAAAA-clob-payload-block-011-AAAAAAAAAA-clob-payload-block-012-AAAAAAAAAA-clob-payload-block-013-AAAAAAAAAA-clob-payload-block-014-AAAAAAAAAA-clob-payload-block-015-AAAAAAAAAA-clob-payload-block-016-AAAAAAAAAA-clob-payload-block-017-AAAAAAAAAA-clob-payload-block-018-AAAAAAAAAA-clob-payload-block-019-AAAAAAAAAA-clob-payload-block-020-END\"\n  }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Writes ~1.5 KB into the CLOB column BNC_GTWY_RQST via the auto-generated  CASE WHEN :p IS NOT NULL THEN TO_CLOB(:p) ELSE t.COL END  pattern. The parameter is bound as Types.VARCHAR — Oracle promotes it to CLOB.\n\nGET v2-Q1 should return the same string verbatim."
+              }
+            },
+            {
+              "name": "v2-U5. addr_dtl merge-and-prune (keep id-001, drop the other)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"nonFinTxn\": false,\n  \"addrDtl\": [\n    {\n      \"id\": \"{{addrIdV2}}\",\n      \"addrType\": \"SENDER\",\n      \"stLine1\": \"123 Main St — UPDATED via merge\",\n      \"city\": \"New York\",\n      \"st\": \"NY\",\n      \"cntryNam\": \"US\",\n      \"postCd\": \"10001\",\n      \"addrStat\": \"VERIFIED\",\n      \"updtUserNam\": \"merge-test\"\n    }\n  ]\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Run AFTER v2-U2 (which created 2 addresses, one with explicit id={{addrIdV2}}, one auto-UUID).\n\nThis request sends only the explicit-id address. The service:\n  1. MERGEs the explicit-id row (updates stLine1)\n  2. Collects keepIds = [{{addrIdV2}}]\n  3. DELETEs every other address for this tranId NOT IN keepIds — so the auto-UUID one is removed.\n\nA following GET will show exactly 1 address."
+              }
+            },
+            {
+              "name": "v2-U6. addr_dtl empty list → delete all",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"nonFinTxn\": false,\n  \"addrDtl\": []\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Empty array semantics: every SEND_TRAN_ADDR_DTL row for this tranId is deleted. A following GET will show addrDtl: []."
+              }
+            },
+            {
+              "name": "v2-U7. addr_dtl omitted → untouched",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"nonFinTxn\": false,\n  \"updtUserNam\": \"omitted-children-test\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "When tranDtl / recipDtl / addrDtl keys are absent (not just null) the service leaves those child rows alone. Use the GET that follows to confirm the existing children survive."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Query Operations",
+          "item": [
+            {
+              "name": "v2-Q1. GET by ID - Full Graph",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Response is a Map<String,Object> assembled from the YAML metadata:\n  - parent columns at the root\n  - tranDtl   → nested Map (or null)\n  - recipDtl  → nested Map (or null)\n  - addrDtl   → array of Maps\n\nField order follows the YAML column order (LinkedHashMap)."
+              }
+            },
+            {
+              "name": "v2-Q2. GET All - Default Page",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions"]
+                },
+                "description": "Paginated parent-only list (no child data). Same PagedResponse shape as v1, with first/last flags."
+              }
+            },
+            {
+              "name": "v2-Q3. GET All - Custom Pagination",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions?page=0&size=5",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions"],
+                  "query": [
+                    { "key": "page", "value": "0" },
+                    { "key": "size", "value": "5" }
+                  ]
+                },
+                "description": "Validated by @Min(0) on page and @Min(1)@Max(100) on size."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Direct Child-Table Access",
+          "description": "Because every table is registered with its own alias, child tables are addressable on their own — useful for ops queries and partial updates that don't need to walk through the parent.",
+          "item": [
+            {
+              "name": "v2-C1. GET send-tran-dtl by tranId (PK=FK)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-tran-dtl/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-tran-dtl", "{{tranIdV2}}"]
+                },
+                "description": "SEND_TRAN_DTL has PK = FK = TRAN_ID. The {id} path variable is the tranId."
+              }
+            },
+            {
+              "name": "v2-C2. GET send-recip-dtl by tranId (PK=FK)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-recip-dtl/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-recip-dtl", "{{tranIdV2}}"]
+                },
+                "description": "Returns the SEND_RECIP_DTL row (sender + recipient PII, DOBs as ISO yyyy-MM-dd)."
+              }
+            },
+            {
+              "name": "v2-C3. GET single address by its UUID",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-tran-addr-dtl/{{addrIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-tran-addr-dtl", "{{addrIdV2}}"]
+                },
+                "description": "SEND_TRAN_ADDR_DTL has a per-row PK (ID). Use the id returned in v2-Q1's addrDtl[] array. The collection variable {{addrIdV2}} is set to the fixed id used in v2-U2."
+              }
+            },
+            {
+              "name": "v2-C4. PATCH a single address directly (null-guard)",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranId\": \"{{tranIdV2}}\",\n  \"addrStat\": \"PATCHED-DIRECTLY\",\n  \"updtUserNam\": \"direct-patch\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-tran-addr-dtl/{{addrIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-tran-addr-dtl", "{{addrIdV2}}"]
+                },
+                "description": "Direct child-row MERGE. Only addrStat + updtUserNam change; all other fields are preserved by the COALESCE null-guard. Note: tranId (FK) and id (PK) are required by the metadata so they must be sent."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Delete Operations",
+          "item": [
+            {
+              "name": "v2-D1. DELETE Transaction (cascades children)",
+              "request": {
+                "method": "DELETE",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/{{tranIdV2}}",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "{{tranIdV2}}"]
+                },
+                "description": "Service-side cascade: addrDtl → tranDtl → recipDtl → parent (because the DDL has no ON DELETE CASCADE). Returns 204."
+              }
+            }
+          ]
+        },
+        {
+          "name": "Error Cases",
+          "item": [
+            {
+              "name": "v2-E1. 400 - Missing required tranType",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"tranAmt\": 500.00,\n  \"tranCurr\": \"USD\",\n  \"nonFinTxn\": false\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/TXN-METADATA-BAD-001",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "TXN-METADATA-BAD-001"]
+                },
+                "description": "MetadataValidator enforces required:true from YAML. Same 400 JSON shape (fieldErrors map) as v1's @NotBlank failure — the global handler treats them identically."
+              }
+            },
+            {
+              "name": "v2-E2. 400 - Missing required tranCrteDt",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranAmt\": 500.00\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/TXN-METADATA-BAD-002",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "TXN-METADATA-BAD-002"]
+                },
+                "description": "Expect 400 with fieldErrors.tranCrteDt = \"must not be null\"."
+              }
+            },
+            {
+              "name": "v2-E3. 400 - String exceeds metadata maxLength",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"THIS_VALUE_IS_LONGER_THAN_TEN_CHARS\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\"\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/TXN-METADATA-BAD-003",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "TXN-METADATA-BAD-003"]
+                },
+                "description": "tranType is VARCHAR2(10) in DDL and maxLength:10 in YAML. Expect 400 with fieldErrors.tranType = \"must not exceed 10 characters\". No DB call is made."
+              }
+            },
+            {
+              "name": "v2-E4. 400 - Child tranDtl missing required tranCrteDt",
+              "request": {
+                "method": "PUT",
+                "header": [
+                  { "key": "Content-Type", "value": "application/json" }
+                ],
+                "body": {
+                  "mode": "raw",
+                  "options": { "raw": { "language": "json" } },
+                  "raw": "{\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"tranDtl\": { \"paymtType\": \"CARD\" }\n}"
+                },
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/TXN-METADATA-BAD-004",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "TXN-METADATA-BAD-004"]
+                },
+                "description": "Validation runs per section. Expect 400 on the child's required:true tranCrteDt field."
+              }
+            },
+            {
+              "name": "v2-E5. 400 - Page size exceeds @Max(100)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions?page=0&size=200",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions"],
+                  "query": [
+                    { "key": "page", "value": "0" },
+                    { "key": "size", "value": "200" }
+                  ]
+                },
+                "description": "Bean Validation on the controller, not metadata-driven. Returns 400 with ConstraintViolationException shape."
+              }
+            },
+            {
+              "name": "v2-E6. 404 - GET non-existent id",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/send-transactions/DOES-NOT-EXIST",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "send-transactions", "DOES-NOT-EXIST"]
+                },
+                "description": "Returns 404 with the same ErrorResponse shape (UTC timestamp + traceId from MDC) as v1."
+              }
+            },
+            {
+              "name": "v2-E7. 500-ish - Unknown alias (no YAML registered)",
+              "request": {
+                "method": "GET",
+                "header": [],
+                "url": {
+                  "raw": "{{baseUrl}}/api/v2/no-such-table/anything",
+                  "host": ["{{baseUrl}}"],
+                  "path": ["api", "v2", "no-such-table", "anything"]
+                },
+                "description": "MetadataRegistry.require throws IllegalArgumentException for an unknown alias. Caught by the generic exception handler — 500 with a masked message (\"An unexpected error occurred\"). Real error visible in server logs."
+              }
+            }
+          ]
         }
       ]
     }

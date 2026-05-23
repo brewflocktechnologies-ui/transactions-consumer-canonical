@@ -1,0 +1,31 @@
+# =====================================================================
+# SEND_TRAN_ADDR_DTL — 1:many child of SEND_TRANSACTIONS
+# PK = ID (per-row), FK = TRAN_ID. Client supplies id for updates;
+# the service generates a UUID for new rows.
+# =====================================================================
+name: SEND_TRAN_ADDR_DTL
+schema: SEND_TXN_OWNER
+alias: send-tran-addr-dtl
+pk: ID
+pkJsonName: id
+defaultOrderBy: CRTE_TS
+
+columns:
+  - { jsonName: id,            dbColumn: ID,             sqlType: VARCHAR,   maxLength: 50,  pk: true, required: true, nullGuard: false }
+  - { jsonName: tranId,        dbColumn: TRAN_ID,        sqlType: VARCHAR,   maxLength: 50,  required: true }
+  - { jsonName: addrType,      dbColumn: ADDR_TYPE,      sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: stLine1,       dbColumn: ST_LINE1,       sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: stLine2,       dbColumn: ST_LINE2,       sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: city,          dbColumn: CITY,           sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: st,            dbColumn: ST,             sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: cntryNam,      dbColumn: CNTRY_NAM,      sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: postCd,        dbColumn: POST_CD,        sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: addrStat,      dbColumn: ADDR_STAT,      sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: postCdStat,    dbColumn: POST_CD_STAT,   sqlType: VARCHAR,   maxLength: 20 }
+
+  # ── Audit ──────────────────────────────────────────────────────────
+  - { jsonName: crteTs,        dbColumn: CRTE_TS,        sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: updtTs,        dbColumn: UPDT_TS,        sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: crteUserNam,   dbColumn: CRTE_USER_NAM,  sqlType: VARCHAR,   maxLength: 20, insertOnly: true }
+  - { jsonName: updtUserNam,   dbColumn: UPDT_USER_NAM,  sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: rplctnUpdtTs,  dbColumn: RPLCTN_UPDT_TS, sqlType: TIMESTAMP, audit: true, readOnly: true }

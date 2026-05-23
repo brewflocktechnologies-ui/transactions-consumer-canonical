@@ -3,6 +3,7 @@ package com.poc.transactions_consumer_canonical.exception;
 import com.poc.transactions_consumer_canonical.dto.ErrorResponse;
 import jakarta.validation.ConstraintViolationException;
 import lombok.extern.slf4j.Slf4j;
+import org.slf4j.MDC;
 import org.springframework.dao.DataAccessException;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
@@ -28,6 +29,7 @@ public class GlobalExceptionHandler {
                         .error("Not Found")
                         .message(ex.getMessage())
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
                         .build()
         );
     }
@@ -48,6 +50,7 @@ public class GlobalExceptionHandler {
                         .error("Validation Failed")
                         .message("One or more fields are invalid")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
                         .fieldErrors(fieldErrors)
                         .build()
         );
@@ -69,7 +72,27 @@ public class GlobalExceptionHandler {
                         .error("Validation Failed")
                         .message("One or more request parameters are invalid")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
                         .fieldErrors(fieldErrors)
+                        .build()
+        );
+    }
+
+    /**
+     * Metadata-driven validation failures — mirrored to the same 400 shape as
+     * Jakarta {@code @Valid} so clients see no difference.
+     */
+    @ExceptionHandler(MetadataValidationException.class)
+    public ResponseEntity<ErrorResponse> handleMetadataValidation(MetadataValidationException ex) {
+        log.warn("Metadata validation failed — fieldErrors: {}", ex.getFieldErrors());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
+                ErrorResponse.builder()
+                        .status(HttpStatus.BAD_REQUEST.value())
+                        .error("Validation Failed")
+                        .message("One or more fields are invalid")
+                        .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
+                        .fieldErrors(ex.getFieldErrors())
                         .build()
         );
     }
@@ -88,6 +111,7 @@ public class GlobalExceptionHandler {
                         .error("Database Error")
                         .message("A database error occurred. Please try again or contact support.")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
                         .build()
         );
     }
@@ -105,6 +129,7 @@ public class GlobalExceptionHandler {
                         .error("Internal Server Error")
                         .message("An unexpected error occurred. Please try again or contact support.")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
+                        .traceId(MDC.get("traceId"))
                         .build()
         );
     }

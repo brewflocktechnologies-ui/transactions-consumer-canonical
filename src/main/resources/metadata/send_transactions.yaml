@@ -1,0 +1,73 @@
+# =====================================================================
+# SEND_TRANSACTIONS — parent table
+# Adding a new column? One line below + matching DDL. No Java changes.
+# =====================================================================
+name: SEND_TRANSACTIONS
+schema: SEND_TXN_OWNER
+alias: send-transactions
+pk: TRAN_ID
+pkJsonName: tranId
+defaultOrderBy: TRAN_CRTE_DT DESC
+
+columns:
+  # ── Identity / required ────────────────────────────────────────────
+  - { jsonName: tranId,            dbColumn: TRAN_ID,            sqlType: VARCHAR,   maxLength: 50,   pk: true, required: true, nullGuard: false }
+  - { jsonName: tranInitId,        dbColumn: TRAN_INIT_ID,       sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: origInstId,        dbColumn: ORIG_INST_ID,       sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: origInstNam,       dbColumn: ORIG_INST_NAM,      sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: tranfrAcptNam,     dbColumn: TRANFR_ACPT_NAM,    sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: tranfrAcptId,      dbColumn: TRANFR_ACPT_ID,     sqlType: VARCHAR,   maxLength: 40 }
+  - { jsonName: tranCrteDt,        dbColumn: TRAN_CRTE_DT,       sqlType: TIMESTAMP, required: true }
+  - { jsonName: tranType,          dbColumn: TRAN_TYPE,          sqlType: VARCHAR,   maxLength: 10,   required: true }
+
+  # ── Reference / status ─────────────────────────────────────────────
+  - { jsonName: custRefNum,        dbColumn: CUST_REF_NUM,       sqlType: VARCHAR,   maxLength: 100 }
+  - { jsonName: curStat,           dbColumn: CUR_STAT,           sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: origStat,          dbColumn: ORIG_STAT,          sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: useCase,           dbColumn: USE_CASE,           sqlType: VARCHAR,   maxLength: 3 }
+  - { jsonName: msgType,           dbColumn: MSG_TYPE,           sqlType: VARCHAR,   maxLength: 10 }
+  - { jsonName: refId,             dbColumn: REF_ID,             sqlType: VARCHAR,   maxLength: 40 }
+  - { jsonName: swSerNum,          dbColumn: SW_SER_NUM,         sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: bnkntRefNum,       dbColumn: BNKNT_REF_NUM,      sqlType: VARCHAR,   maxLength: 1000 }
+  - { jsonName: sendAcct,          dbColumn: SEND_ACCT,          sqlType: VARCHAR,   maxLength: 100 }
+  - { jsonName: recipAcct,         dbColumn: RECIP_ACCT,         sqlType: VARCHAR,   maxLength: 100 }
+
+  # ── Amount / currency ──────────────────────────────────────────────
+  - { jsonName: tranAmt,           dbColumn: TRAN_AMT,           sqlType: NUMERIC }
+  - { jsonName: tranCurr,          dbColumn: TRAN_CURR,          sqlType: VARCHAR,   maxLength: 3 }
+
+  # ── Error / fund / correlation ─────────────────────────────────────
+  - { jsonName: errCd,             dbColumn: ERR_CD,             sqlType: VARCHAR,   maxLength: 25 }
+  - { jsonName: fundAvail,         dbColumn: FUND_AVAIL,         sqlType: VARCHAR,   maxLength: 30 }
+  - { jsonName: corltnId,          dbColumn: CORLTN_ID,          sqlType: VARCHAR,   maxLength: 40 }
+
+  # ── Audit (DB-managed) ─────────────────────────────────────────────
+  - { jsonName: crteTs,            dbColumn: CRTE_TS,            sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: crteUserNam,       dbColumn: CRTE_USER_NAM,      sqlType: VARCHAR,   maxLength: 20,   insertOnly: true }
+  - { jsonName: updtTs,            dbColumn: UPDT_TS,            sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: updtUserNam,       dbColumn: UPDT_USER_NAM,      sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: rplctnUpdtTs,      dbColumn: RPLCTN_UPDT_TS,     sqlType: TIMESTAMP, audit: true, readOnly: true }
+
+  # ── Network / validation ───────────────────────────────────────────
+  - { jsonName: ntwrkCd,           dbColumn: NTWRK_CD,           sqlType: VARCHAR,   maxLength: 40 }
+  - { jsonName: ntwrkRespCd,       dbColumn: NTWRK_RESP_CD,      sqlType: VARCHAR,   maxLength: 30 }
+  - { jsonName: tranInitNam,       dbColumn: TRAN_INIT_NAM,      sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: namStat,           dbColumn: NAM_STAT,           sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: cvcStat,           dbColumn: CVC_STAT,           sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: cvcRespCd,         dbColumn: CVC_RESP_CD,        sqlType: VARCHAR,   maxLength: 5 }
+  - { jsonName: acctNum,           dbColumn: ACCT_NUM,           sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: acctType,          dbColumn: ACCT_TYPE,          sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: acctHoldNam,       dbColumn: ACCT_HOLD_NAM,      sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: errCdDesc,         dbColumn: ERR_CD_DESC,        sqlType: VARCHAR,   maxLength: 500 }
+
+  # ── Boolean stored as NUMBER(1,0) ──────────────────────────────────
+  # null in payload → COALESCE preserves DB; true/false → 1/0
+  - { jsonName: nonFinTxn,         dbColumn: NON_FIN_TXN,        sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
+
+  - { jsonName: ntwrkRespCdDesc,   dbColumn: NTWRK_RESP_CD_DESC, sqlType: VARCHAR,   maxLength: 500 }
+
+# Nested child sections in the request/response payload
+children:
+  - { jsonName: tranDtl,  tableRef: SEND_TRAN_DTL,      cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
+  - { jsonName: recipDtl, tableRef: SEND_RECIP_DTL,     cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
+  - { jsonName: addrDtl,  tableRef: SEND_TRAN_ADDR_DTL, cardinality: ONE_TO_MANY, childKey: TRAN_ID, idJsonName: id, generateIdIfMissing: true }
