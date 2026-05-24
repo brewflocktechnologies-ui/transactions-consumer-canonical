@@ -334,103 +334,143 @@
       "description": "Publishes an EventEnvelope to the Kafka topic via POST /api/publish.\n\nStructure:\n  EventEnvelope          — outer wrapper (validated: all fields @NotBlank / eventTimestamp @Positive)\n    └─ eventPayload      — JSON-string of TransactionEventAxonMessage\n\nThe consumer deserialises both layers and logs every key field.\nReturns 202 Accepted on success; 400 Bad Request when @Valid fails.",
       "item": [
         {
-          "name": "K1. Publish - Minimal EventEnvelope (core fields only)",
+          "name": "K1. PAYMENT_INITIATED — full payload → saves to DB",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_INITIATED\",\n  \"eventId\": \"EVT-001\",\n  \"correlationId\": \"CORL-XYZ-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-001\\\",\\\"tranAmt\\\":\\\"500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"PENDING\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\"}\"\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-PAY-001\",\n  \"correlationId\": \"CORL-PAY-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:30:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-001\\\",\\\"tranAmt\\\":\\\"1500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"PENDING\\\",\\\"internalStatus\\\":\\\"INITIATED\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"networkResponseCode\\\":\\\"00\\\",\\\"networkResponseCodeDesc\\\":\\\"Approved\\\",\\\"correlationId\\\":\\\"CORL-PAY-001\\\",\\\"originatingInstId\\\":\\\"BANK-US-001\\\",\\\"originatingInstName\\\":\\\"First National Bank\\\",\\\"acctNum\\\":\\\"4111111111111111\\\",\\\"acctType\\\":\\\"CREDIT\\\",\\\"accountHolderName\\\":\\\"JOHN A SMITH\\\",\\\"sndrAcct\\\":\\\"ACC-001234\\\",\\\"rcvrAcct\\\":\\\"ACC-005678\\\",\\\"cvcStatus\\\":\\\"PASS\\\",\\\"cvcResponseCode\\\":\\\"M\\\",\\\"nameStatus\\\":\\\"MATCH\\\",\\\"fundAvailable\\\":\\\"Y\\\",\\\"channel\\\":\\\"API\\\",\\\"paymentRef\\\":\\\"PAYREF-20241115-001\\\",\\\"paymentUnqRefNum\\\":\\\"UTR-ABCDEF123456\\\",\\\"paymentSetlAmt\\\":\\\"1500.00\\\",\\\"fundingSource\\\":\\\"CHECKING\\\",\\\"merchantCategoryCd\\\":\\\"5411\\\",\\\"paymentType\\\":\\\"CARD\\\",\\\"originalRequestPayload\\\":\\\"{\\\\\\\"amount\\\\\\\":1500}\\\",\\\"originalResponsePayload\\\":\\\"{\\\\\\\"status\\\\\\\":\\\\\\\"approved\\\\\\\"}\\\",\\\"transferAccptName\\\":\\\"ACME RETAIL INC\\\",\\\"transferAccptId\\\":\\\"MERCH-9876\\\",\\\"transferAccptAddrLn1\\\":\\\"789 Broadway\\\",\\\"transferAccptAddrCity\\\":\\\"New York\\\",\\\"transferAccptAddrState\\\":\\\"NY\\\",\\\"transferAccptAddrCntry\\\":\\\"USA\\\",\\\"transferAccptAddrPostalCd\\\":\\\"10001\\\",\\\"processorId\\\":\\\"PROC-001\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrMiddleName\\\":\\\"A\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"sndrPhoneNum\\\":\\\"+12125550101\\\",\\\"sndrEmailAddr\\\":\\\"john.smith@example.com\\\",\\\"sndrBirthDt\\\":\\\"1985-06-20\\\",\\\"sndrNationalityCd\\\":\\\"US\\\",\\\"sndrAcct\\\":\\\"ACC-001234\\\",\\\"sndrAddrLine1\\\":\\\"123 Main St\\\",\\\"sndrCityName\\\":\\\"New York\\\",\\\"sndrCountryCd\\\":\\\"US\\\",\\\"sndrPostalCd\\\":\\\"10001\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"rcvrPhoneNum\\\":\\\"+14155550199\\\",\\\"rcvrEmailAddr\\\":\\\"jane.doe@example.com\\\",\\\"rcvrBirthDate\\\":\\\"1990-03-14\\\",\\\"rcvrNationalityCd\\\":\\\"MX\\\",\\\"rcvrAcct\\\":\\\"ACC-005678\\\",\\\"rcvrAddrLine1\\\":\\\"456 Reforma Ave\\\",\\\"rcvrCity\\\":\\\"Mexico City\\\",\\\"rcvrCountryCd\\\":\\\"MX\\\",\\\"rcvrPostalCd\\\":\\\"06600\\\"}\"\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "publish"]
-            },
-            "description": "Minimal valid EventEnvelope. eventPayload carries a lightweight TransactionEventAxonMessage.\n\nExpect in server logs:\n  [PRODUCER]  Serialising EventEnvelope | eventId=EVT-001\n  [CONSUMER]  EventEnvelope  → all envelope fields\n  [CONSUMER]  TransactionEventAxonMessage → tranId, tranAmt, status, sndr/rcvr names etc."
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "PAYMENT_INITIATED event → matched by PAYMENT.yaml → canonical mapping applied → saved to SEND_TRANSACTIONS + SEND_TRAN_DTL + SEND_RECIP_DTL + SEND_TRAN_ADDR_DTL.\n\nExpect logs:\n  [CONSUMER] Matched mapping eventType=PAYMENT\n  [CONSUMER] Canonical request built | tranId=TXN-PAY-001 tranType=SEND\n  [CONSUMER] Saved to DB successfully"
           }
         },
         {
-          "name": "K2. Publish - Full EventEnvelope (rich transaction payload)",
+          "name": "K2. PAYMENT_COMPLETED — status update (re-upsert same tranId)",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_COMPLETED\",\n  \"eventId\": \"EVT-002\",\n  \"correlationId\": \"CORL-XYZ-002\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\",\\\"priority\\\":\\\"HIGH\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-002\\\",\\\"tranAmt\\\":\\\"2750.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"networkResponseCode\\\":\\\"00\\\",\\\"networkResponseCodeDesc\\\":\\\"Approved\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrMiddleName\\\":\\\"A\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"sndrEmailAddr\\\":\\\"john.smith@example.com\\\",\\\"sndrPhoneNum\\\":\\\"+12125550101\\\",\\\"sndrAddrLine1\\\":\\\"123 Main St\\\",\\\"sndrCityName\\\":\\\"New York\\\",\\\"sndrCountryCd\\\":\\\"US\\\",\\\"sndrPostalCd\\\":\\\"10001\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"rcvrEmailAddr\\\":\\\"jane.doe@example.com\\\",\\\"rcvrPhoneNum\\\":\\\"+14155550199\\\",\\\"rcvrAddrLine1\\\":\\\"456 Reforma Ave\\\",\\\"rcvrCity\\\":\\\"Mexico City\\\",\\\"rcvrCountryCd\\\":\\\"MX\\\",\\\"rcvrPostalCd\\\":\\\"06600\\\",\\\"originatingInstId\\\":\\\"BANK-US-001\\\",\\\"originatingInstName\\\":\\\"First National Bank\\\",\\\"originatingCountry\\\":\\\"US\\\",\\\"paymentStatus\\\":\\\"COMPLETED\\\",\\\"paymentAmt\\\":\\\"2750.00\\\",\\\"paymentCurrCd\\\":\\\"USD\\\",\\\"fundingStatus\\\":\\\"SETTLED\\\",\\\"fundingAmt\\\":\\\"2750.00\\\",\\\"fundingSource\\\":\\\"CHECKING\\\",\\\"channel\\\":\\\"API\\\",\\\"brand\\\":\\\"MASTERCARD\\\",\\\"correlationId\\\":\\\"CORL-XYZ-002\\\",\\\"nonFinTxn\\\":0}\"\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_COMPLETED\",\n  \"eventId\": \"EVT-PAY-002\",\n  \"correlationId\": \"CORL-PAY-001\",\n  \"eventTimestamp\": 1731661200000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"U\\\",\\\"timestamp\\\":\\\"2025-02-04T12:31:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-001\\\",\\\"tranAmt\\\":\\\"1500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"internalStatus\\\":\\\"APPROVED\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"networkResponseCode\\\":\\\"00\\\",\\\"networkResponseCodeDesc\\\":\\\"Approved\\\",\\\"correlationId\\\":\\\"CORL-PAY-001\\\"}\"\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "publish"]
-            },
-            "description": "Full EventEnvelope with a rich TransactionEventAxonMessage payload covering sender, receiver, network, payment leg, funding leg, and institution fields.\n\nCheck logs for the complete [CONSUMER] output printing all mapped fields."
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "Same tranId=TXN-PAY-001 re-upserted with status=COMPLETED. The MERGE null-guard preserves all fields already in DB that are absent from this payload."
           }
         },
         {
-          "name": "K3. Publish - Status Update Event (FAILED)",
+          "name": "K3. PAYMENT_FAILED — error event",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_FAILED\",\n  \"eventId\": \"EVT-003\",\n  \"correlationId\": \"CORL-XYZ-001\",\n  \"eventTimestamp\": 1731661200000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-001\\\",\\\"tranAmt\\\":\\\"500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"FAILED\\\",\\\"networkResponseCode\\\":\\\"51\\\",\\\"networkResponseCodeDesc\\\":\\\"Insufficient funds\\\",\\\"errorCd\\\":\\\"ERR-5001\\\",\\\"errorCdDesc\\\":\\\"Insufficient funds\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"paymentStatus\\\":\\\"FAILED\\\",\\\"fundingStatus\\\":\\\"NOT_SETTLED\\\"}\"\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_FAILED\",\n  \"eventId\": \"EVT-PAY-003\",\n  \"correlationId\": \"CORL-PAY-002\",\n  \"eventTimestamp\": 1731661800000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"U\\\",\\\"timestamp\\\":\\\"2025-02-04T12:32:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-002\\\",\\\"tranAmt\\\":\\\"750.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"FAILED\\\",\\\"networkCode\\\":\\\"VISA\\\",\\\"networkResponseCode\\\":\\\"51\\\",\\\"networkResponseCodeDesc\\\":\\\"Insufficient funds\\\",\\\"errorCd\\\":\\\"ERR-5001\\\",\\\"errorCdDesc\\\":\\\"Insufficient funds — sender account balance too low\\\",\\\"correlationId\\\":\\\"CORL-PAY-002\\\",\\\"sndrFirstName\\\":\\\"Alice\\\",\\\"sndrLastName\\\":\\\"Johnson\\\",\\\"rcvrFirstName\\\":\\\"Bob\\\",\\\"rcvrLastName\\\":\\\"Williams\\\"}\"\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "publish"]
-            },
-            "description": "Publishes a TRANSACTION_FAILED event for TXN-KAFKA-001. Consumer will log status=FAILED, error code ERR-5001, and network response 51/Insufficient funds."
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "PAYMENT_FAILED event creates TXN-PAY-002 with status=FAILED, error ERR-5001, network response 51."
           }
         },
         {
-          "name": "K4. Publish - ignore=true (skipped by consumer)",
+          "name": "K4. FUNDING_INITIATED — full funding payload → saves to DB",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_INITIATED\",\n  \"eventId\": \"EVT-004\",\n  \"correlationId\": \"CORL-XYZ-004\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-004\\\",\\\"status\\\":\\\"PENDING\\\"}\",\n  \"ignore\": true\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"FUNDING_INITIATED\",\n  \"eventId\": \"EVT-FUND-001\",\n  \"correlationId\": \"CORL-FUND-001\",\n  \"eventTimestamp\": 1731662400000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:33:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"fundingId\\\":\\\"FUND-001\\\",\\\"fundingRef\\\":\\\"FREF-20241115-001\\\",\\\"fundingAmt\\\":\\\"1500.00\\\",\\\"fundingCurrCd\\\":\\\"USD\\\",\\\"fundingSetlAmt\\\":\\\"1500.00\\\",\\\"fundingStatus\\\":\\\"INITIATED\\\",\\\"fundingStatusReason\\\":\\\"Pending authorization\\\",\\\"fundingNetworkCode\\\":\\\"MASTERCARD\\\",\\\"fundingNetworkResponseCode\\\":\\\"00\\\",\\\"fundingNetworkResponseDesc\\\":\\\"Approved\\\",\\\"fundingUnqRefNum\\\":\\\"FUND-UTR-001\\\",\\\"fundingRetrievalRefNum\\\":\\\"FRRN-001\\\",\\\"mcFundingSource\\\":\\\"CHECKING\\\",\\\"correlationId\\\":\\\"CORL-FUND-001\\\",\\\"originatingInstId\\\":\\\"BANK-US-001\\\",\\\"originatingInstName\\\":\\\"First National Bank\\\",\\\"sndrAcct\\\":\\\"ACC-001234\\\",\\\"rcvrAcct\\\":\\\"ACC-005678\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"sndrAddrLine1\\\":\\\"123 Main St\\\",\\\"sndrCityName\\\":\\\"New York\\\",\\\"sndrCountryCd\\\":\\\"US\\\",\\\"sndrPostalCd\\\":\\\"10001\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"rcvrCity\\\":\\\"Mexico City\\\",\\\"rcvrCountryCd\\\":\\\"MX\\\",\\\"rcvrPostalCd\\\":\\\"06600\\\"}\"\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "publish"]
-            },
-            "description": "Envelope with ignore=true. The producer sends it normally (202 returned), but the consumer detects the flag and logs 'Envelope flagged ignore=true — skipping payload processing' without deserialising the inner payload."
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "FUNDING_INITIATED event → matched by FUNDING.yaml → tranIdSource=fundingId → DB key=FUND-001, tranType=FUNDING.\n\nExpect logs:\n  [CONSUMER] Matched mapping eventType=FUNDING\n  [CONSUMER] Canonical request built | tranId=FUND-001 tranType=FUNDING\n  [CONSUMER] Saved to DB successfully"
           }
         },
         {
-          "name": "K5. Publish - 400 Validation failure (missing required fields)",
+          "name": "K5. FUNDING_SETTLED — funding completion update",
           "request": {
             "method": "POST",
-            "header": [
-              { "key": "Content-Type", "value": "application/json" }
-            ],
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"FUNDING_SETTLED\",\n  \"eventId\": \"EVT-FUND-002\",\n  \"correlationId\": \"CORL-FUND-001\",\n  \"eventTimestamp\": 1731663000000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"U\\\",\\\"timestamp\\\":\\\"2025-02-04T12:34:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"fundingId\\\":\\\"FUND-001\\\",\\\"fundingAmt\\\":\\\"1500.00\\\",\\\"fundingCurrCd\\\":\\\"USD\\\",\\\"fundingSetlAmt\\\":\\\"1500.00\\\",\\\"fundingStatus\\\":\\\"SETTLED\\\",\\\"fundingNetworkCode\\\":\\\"MASTERCARD\\\",\\\"fundingNetworkResponseCode\\\":\\\"00\\\",\\\"correlationId\\\":\\\"CORL-FUND-001\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "Re-upserts FUND-001 with fundingStatus=SETTLED. Null-guard preserves all previously saved fields."
+          }
+        },
+        {
+          "name": "K6. ignore=true — skipped by consumer (no DB write)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-IGN-001\",\n  \"correlationId\": \"CORL-IGN-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-IGN-001\\\",\\\"status\\\":\\\"PENDING\\\"}\",\n  \"ignore\": true\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "ignore=true stops the consumer after logging the envelope. No mapping or DB write occurs."
+          }
+        },
+        {
+          "name": "K7. Unknown eventName — no mapping (warning logged, no DB write)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"UNKNOWN_EVENT_TYPE\",\n  \"eventId\": \"EVT-UNK-001\",\n  \"correlationId\": \"CORL-UNK-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-UNK-001\\\",\\\"status\\\":\\\"PENDING\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventName=UNKNOWN_EVENT_TYPE has no YAML mapping. Consumer logs a WARN and skips DB write.\n\nTo handle this event: add 'UNKNOWN_EVENT_TYPE' to the eventNames list of an existing YAML, or create a new UNKNOWN_EVENT_TYPE.yaml."
+          }
+        },
+        {
+          "name": "K8. 400 — Validation failure (missing required envelope fields)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
               "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\"\n}"
             },
-            "url": {
-              "raw": "{{baseUrl}}/api/publish",
-              "host": ["{{baseUrl}}"],
-              "path": ["api", "publish"]
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "Missing eventName, eventId, correlationId, eventMetadata, eventPayload (@NotBlank) and eventTimestamp (@Positive defaults 0). Expects 400 with field-level validation errors."
+          }
+        },
+        {
+          "name": "K9. BLOCKED — eventSource not in allowedEventSources (PAYMENT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"UNKNOWN_SOURCE\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-RULE-001\",\n  \"correlationId\": \"CORL-RULE-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:30:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-RULE-001\\\",\\\"status\\\":\\\"PENDING\\\",\\\"tranAmt\\\":\\\"100.00\\\"}\"\n}"
             },
-            "description": "Intentionally omits eventName, eventId, correlationId, eventMetadata, eventPayload (all @NotBlank) and eventTimestamp (@Positive defaults to 0). Expects 400 Bad Request with validation error details."
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventSource=UNKNOWN_SOURCE is NOT in PAYMENT.yaml allowedEventSources=[AIS_SERVICE, PAYMENT_HUB].\n\nRule engine fires at Step 4 (after routing, before payload deserialization).\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=PAYMENT\n  [RULE ENGINE] IGNORED | rule=eventSource | value='UNKNOWN_SOURCE' | allowed=[AIS_SERVICE, PAYMENT_HUB]\n  [CONSUMER]  Message blocked by rule engine\n\nNo DB write. Returns 202 to the publisher (Kafka is fire-and-forget)."
+          }
+        },
+        {
+          "name": "K10. BLOCKED — operation not in allowedOperations (PAYMENT)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-RULE-002\",\n  \"correlationId\": \"CORL-RULE-002\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"D\\\",\\\"timestamp\\\":\\\"2025-02-04T12:30:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-RULE-002\\\",\\\"status\\\":\\\"PENDING\\\",\\\"tranAmt\\\":\\\"100.00\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventSource=AIS_SERVICE passes Rule 1. But operation=D is NOT in PAYMENT.yaml allowedOperations=[A, U].\n\nRule engine fires at Step 4, Rule 2.\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=PAYMENT\n  [RULE ENGINE] IGNORED | rule=operation | value='D' | allowed=[A, U]\n  [CONSUMER]  Message blocked by rule engine\n\nNo DB write. Compare with FUNDING.yaml which DOES allow operation=D."
           }
         }
       ]

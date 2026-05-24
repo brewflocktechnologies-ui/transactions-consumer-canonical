@@ -1,0 +1,191 @@
+# =============================================================================
+# Canonical mapping: FUNDING event type
+#
+# TransactionEventAxonMessage  →  SendTransactionRequest (canonical object)
+#
+# Funding events carry funding-leg amounts, status, and network data.
+# Sender/receiver personal data is the same as for PAYMENT events.
+# =============================================================================
+
+eventType: FUNDING
+tranIdSource: fundingId       # TxnAxonMessage field used as DB TRAN_ID (falls back to correlationId)
+tranType: FUNDING             # literal value for SendTransactionRequest.tranType
+
+# ---------------------------------------------------------------------------
+# Filtering rules — both checks must pass for the message to be processed.
+# An empty or absent list means "allow all values" for that dimension.
+# ---------------------------------------------------------------------------
+rules:
+  # Only process events originating from these sources
+  allowedEventSources:
+    - AIS_SERVICE
+    - FUNDING_SERVICE
+
+  # Only process events whose eventMetadata.operation is in this list
+  # A = Add / Insert   U = Update   D = Delete
+  allowedOperations:
+    - A
+    - U
+    - D
+
+eventNames:
+  - FUNDING_INITIATED
+  - FUNDING_COMPLETED
+  - FUNDING_FAILED
+  - FUNDING_REVERSED
+  - FUNDING_SETTLED
+
+# ---------------------------------------------------------------------------
+# Parent: SendTransactionRequest top-level fields
+# ---------------------------------------------------------------------------
+parent:
+  # Core identifiers
+  - { source: correlationId,               target: corltnId }
+  - { source: fundingRef,                  target: refId }
+  - { source: fundingUnqRefNum,            target: tranInitId }
+  - { source: fundingSwitchSerialNumber,   target: swSerNum }
+  - { source: fundingNtwrkRefNum,          target: bnkntRefNum }
+
+  # Originating institution
+  - { source: originatingInstId,           target: origInstId }
+  - { source: originatingInstName,         target: origInstNam }
+
+  # Transfer acceptor
+  - { source: transferAccptName,           target: tranfrAcptNam }
+  - { source: transferAccptId,             target: tranfrAcptId }
+
+  # Status
+  - { source: fundingStatus,               target: curStat }
+  - { source: fundingStatusReason,         target: errCdDesc }
+  - { source: fundAvailable,               target: fundAvail }
+
+  # Amount / currency (funding leg)
+  - { source: fundingAmt,                  target: tranAmt }
+  - { source: fundingCurrCd,               target: tranCurr }
+
+  # Account
+  - { source: sndrAcct,                    target: sendAcct }
+  - { source: rcvrAcct,                    target: recipAcct }
+  - { source: acctNum,                     target: acctNum }
+  - { source: acctType,                    target: acctType }
+  - { source: accountHolderName,           target: acctHoldNam }
+
+  # Network / validation
+  - { source: fundingNetworkCode,          target: ntwrkCd }
+  - { source: fundingNetworkResponseCode,  target: ntwrkRespCd }
+  - { source: fundingNetworkResponseDesc,  target: ntwrkRespCdDesc }
+  - { source: cvcStatus,                   target: cvcStat }
+  - { source: cvcResponseCode,             target: cvcRespCd }
+  - { source: nameStatus,                  target: namStat }
+
+  # Error
+  - { source: errorCd,                     target: errCd }
+
+  # Channel
+  - { source: channel,                     target: useCase }
+
+# ---------------------------------------------------------------------------
+# tranDtl: SendTranDtlRequest  (1:1 child)
+# ---------------------------------------------------------------------------
+tranDtl:
+  # Funding leg settlement
+  - { source: fundingSetlAmt,                target: tranSetlAmt }
+  - { source: fundingUnqRefNum,              target: unqTranRef }
+  - { source: fundingRetrievalRefNum,        target: paymtRef }
+
+  # Funding source / type
+  - { source: mcFundingSource,               target: fundSrc }
+  - { source: fundingMerchantType,           target: paymtType }
+  - { source: fundingTranProcessCd,          target: tranTypeIndCd }
+  - { source: fundingTransactionCategoryCode, target: tranPrps }
+  - { source: fundingIchgRateDsgnCd,         target: ichgRateDsgn }
+
+  # Network
+  - { source: fundingNetworkCode,            target: paymtFacltrId }   # closest semantic match
+  - { source: fundingAuthIdResp,             target: procId }
+
+  # Acquiring
+  - { source: acquiringCountry,              target: acqCntryNam }
+  - { source: acquiringIdentificationCd,     target: acqIdenCd }
+  - { source: acqIca,                        target: acqIca }
+
+  # Originating payloads
+  - { source: originalRequestPayload,        target: origRqstPyld }
+  - { source: originalResponsePayload,       target: origRespPyld }
+
+  # Transfer acceptor
+  - { source: transferAccptName,             target: tranfrAcptNam }
+  - { source: transferAccptId,               target: tranfrAcptId }
+  - { source: transferAccptTerminalId,       target: tranfrTrmlId }
+  - { source: transferAccptAddrLn1,          target: tranfrAcptStLine1 }
+  - { source: transferAccptAddrCity,         target: tranfrAcptCity }
+  - { source: transferAccptAddrState,        target: tranfrAcptSt }
+  - { source: transferAccptAddrCntry,        target: tranfrAcptCntryNam }
+  - { source: transferAccptAddrPostalCd,     target: tranfrAcptPostCd }
+
+  # CVC
+  - { source: cvcResponseDescription,        target: cvcRespDesc }
+
+# ---------------------------------------------------------------------------
+# recipDtl: SendRecipDtlRequest  (1:1 child) — same PII as PAYMENT
+# ---------------------------------------------------------------------------
+recipDtl:
+  # Sender
+  - { source: sndrFirstName,                target: sendFirstNam }
+  - { source: sndrMiddleName,               target: sendMidNam }
+  - { source: sndrLastName,                 target: sendLstNam }
+  - { source: sndrPhoneNum,                 target: sendPhn }
+  - { source: sndrEmailAddr,                target: sendEmail }
+  - { source: sndrBirthDt,                  target: sendDob }
+  - { source: sndrNationalityCd,            target: sendNatl }
+  - { source: sndrBirthCountry,             target: sendBirthCntryNam }
+  - { source: sndrAcct,                     target: sendAcctNum }
+  - { source: sndrAcctUri,                  target: sendAcctUri }
+  - { source: senderAccountNumberType,      target: sendAcctNumType }
+  - { source: sndrAddrLine1,                target: sendStLine1 }
+  - { source: sndrAddrLine2,                target: sendStLine2 }
+  - { source: sndrCityName,                 target: sendCity }
+  - { source: sndrCountrySubCd,             target: sendSt }
+  - { source: sndrCountryCd,                target: sendCntryNam }
+  - { source: sndrPostalCd,                 target: sendPostCd }
+
+  # Receiver
+  - { source: rcvrFirstName,                target: recipFirstNam }
+  - { source: rcvrMiddleName,               target: recipMidNam }
+  - { source: rcvrLastName,                 target: recipLstNam }
+  - { source: rcvrPhoneNum,                 target: recipPhn }
+  - { source: rcvrEmailAddr,                target: recipEmail }
+  - { source: rcvrBirthDate,                target: recipDob }
+  - { source: rcvrNationalityCd,            target: recipNatl }
+  - { source: rcvrBirthCountry,             target: recipBirthCntryNam }
+  - { source: rcvrAcct,                     target: recipAcctNum }
+  - { source: rcvrAcctUri,                  target: recipAcctUri }
+  - { source: receiverAccountNumberType,    target: recipAcctNumType }
+  - { source: rcvrAddrLine1,                target: recipStLine1 }
+  - { source: rcvrAddrLine2,                target: recipStLine2 }
+  - { source: rcvrCity,                     target: recipCity }
+  - { source: rcvrCountrySubCd,             target: recipSt }
+  - { source: rcvrCountryCd,                target: recipCntryNam }
+  - { source: rcvrPostalCd,                 target: recipPostCd }
+
+# ---------------------------------------------------------------------------
+# addrDtl: List<SendTranAddrDtlRequest>  (1:many child)
+# ---------------------------------------------------------------------------
+addrDtl:
+  - addrType: SENDER
+    mappings:
+      - { source: sndrAddrLine1,   target: stLine1 }
+      - { source: sndrAddrLine2,   target: stLine2 }
+      - { source: sndrCityName,    target: city }
+      - { source: sndrCountrySubCd, target: st }
+      - { source: sndrCountryCd,   target: cntryNam }
+      - { source: sndrPostalCd,    target: postCd }
+
+  - addrType: RECIPIENT
+    mappings:
+      - { source: rcvrAddrLine1,   target: stLine1 }
+      - { source: rcvrAddrLine2,   target: stLine2 }
+      - { source: rcvrCity,        target: city }
+      - { source: rcvrCountrySubCd, target: st }
+      - { source: rcvrCountryCd,   target: cntryNam }
+      - { source: rcvrPostalCd,    target: postCd }
