@@ -27,6 +27,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class GenericTableRepository {
 
+    private static final String FK_VALUE_PARAM = "fkValue";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final MetadataRegistry registry;
     private final SqlBuilder sqlBuilder;
@@ -67,7 +69,7 @@ public class GenericTableRepository {
                     sqlBuilder.buildSelectByPk(t),
                     new MapSqlParameterSource(pkJson, pkValue),
                     new GenericRowMapper(t, converters)));
-        } catch (EmptyResultDataAccessException e) {
+        } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
     }
@@ -77,9 +79,9 @@ public class GenericTableRepository {
         try {
             return Optional.ofNullable(jdbc.queryForObject(
                     sqlBuilder.buildSelectByFk(t, fkDbColumn),
-                    new MapSqlParameterSource("fkValue", fkValue),
+                    new MapSqlParameterSource(FK_VALUE_PARAM, fkValue),
                     new GenericRowMapper(t, converters)));
-        } catch (EmptyResultDataAccessException e) {
+        } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
     }
@@ -88,7 +90,7 @@ public class GenericTableRepository {
         TableMetadata t = registry.require(tableOrAlias);
         return jdbc.query(
                 sqlBuilder.buildSelectByFk(t, fkDbColumn),
-                new MapSqlParameterSource("fkValue", fkValue),
+                new MapSqlParameterSource(FK_VALUE_PARAM, fkValue),
                 new GenericRowMapper(t, converters));
     }
 
@@ -120,7 +122,7 @@ public class GenericTableRepository {
     public int deleteByFk(String tableOrAlias, String fkDbColumn, Object fkValue) {
         TableMetadata t = registry.require(tableOrAlias);
         return jdbc.update(sqlBuilder.buildDeleteByFk(t, fkDbColumn),
-                new MapSqlParameterSource("fkValue", fkValue));
+                new MapSqlParameterSource(FK_VALUE_PARAM, fkValue));
     }
 
     public int deleteByFkNotIn(String tableOrAlias, String fkDbColumn,
@@ -130,7 +132,7 @@ public class GenericTableRepository {
         }
         TableMetadata t = registry.require(tableOrAlias);
         return jdbc.update(sqlBuilder.buildDeleteByFkNotIn(t, fkDbColumn),
-                new MapSqlParameterSource("fkValue", fkValue).addValue("keepIds", keepPkValues));
+                new MapSqlParameterSource(FK_VALUE_PARAM, fkValue).addValue("keepIds", keepPkValues));
     }
 
     // ──────────────────────────────────────────────────────────
@@ -140,10 +142,8 @@ public class GenericTableRepository {
     private MapSqlParameterSource buildParams(TableMetadata t, Map<String, Object> payload) {
         MapSqlParameterSource params = new MapSqlParameterSource();
         for (ColumnMetadata col : t.getColumns()) {
-            if (col.isAudit())   continue; // SYSTIMESTAMP in SQL, never bound
-            if (col.isReadOnly()) continue;
+            if (col.isAudit() || col.isReadOnly() || col.getJsonName() == null) continue;
             String key = col.getJsonName();
-            if (key == null) continue;
             Object raw = payload.get(key);
             Object jdbcValue = converters.forName(col.converterName()).toJdbc(raw, col);
             params.addValue(key, jdbcValue, col.jdbcType());

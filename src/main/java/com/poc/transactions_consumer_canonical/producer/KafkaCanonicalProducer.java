@@ -14,6 +14,8 @@ import org.springframework.stereotype.Component;
 @Slf4j
 public class KafkaCanonicalProducer {
 
+    private static final String SEPARATOR = "-----------------------------------------------";
+
     private final KafkaTemplate<String, String> kafkaTemplate;
     private final ObjectMapper objectMapper;
 
@@ -21,7 +23,7 @@ public class KafkaCanonicalProducer {
      * Step 2 — Serialises the EventEnvelope to JSON and sends it to the Kafka topic.
      */
     public void send(EventEnvelope envelope) {
-        log.info("-----------------------------------------------");
+        log.info(SEPARATOR);
         log.info("[PRODUCER]  Serialising EventEnvelope | eventId={} eventName={}",
                 envelope.getEventId(), envelope.getEventName());
 
@@ -30,7 +32,7 @@ public class KafkaCanonicalProducer {
             json = objectMapper.writeValueAsString(envelope);
         } catch (JsonProcessingException e) {
             log.error("[PRODUCER]  Failed to serialise EventEnvelope to JSON", e);
-            log.info("-----------------------------------------------");
+            log.info(SEPARATOR);
             return;
         }
 
@@ -44,7 +46,7 @@ public class KafkaCanonicalProducer {
                     } else {
                         log.error("[PRODUCER]  Failed to send to Kafka", ex);
                     }
-                    log.info("-----------------------------------------------");
+                    log.info(SEPARATOR);
                 });
     }
 }

@@ -51,11 +51,11 @@ public class EventPayloadSanitizer {
      * Accepts common JSON relaxations; outputs strict RFC-8259 JSON when writing.
      */
     private static final ObjectMapper LENIENT_MAPPER = JsonMapper.builder()
-            .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS)          // // and /* */ comments
-            .enable(JsonReadFeature.ALLOW_SINGLE_QUOTES)          // 'value' instead of "value"
-            .enable(JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES)   // {key: "value"}
-            .enable(JsonReadFeature.ALLOW_TRAILING_COMMA)         // [1, 2, 3,]
-            .enable(JsonReadFeature.ALLOW_MISSING_VALUES)         // [1,,3] sparse arrays
+            .enable(JsonReadFeature.ALLOW_JAVA_COMMENTS)         // single-line and block comments
+            .enable(JsonReadFeature.ALLOW_SINGLE_QUOTES)         // single-quoted strings
+            .enable(JsonReadFeature.ALLOW_UNQUOTED_FIELD_NAMES)  // unquoted field names
+            .enable(JsonReadFeature.ALLOW_TRAILING_COMMA)        // trailing comma after last element
+            .enable(JsonReadFeature.ALLOW_MISSING_VALUES)        // sparse arrays
             .build();
 
     // ── Public API ────────────────────────────────────────────────────────────
@@ -96,7 +96,6 @@ public class EventPayloadSanitizer {
         // ── Attempt 3: unwrap double-serialized JSON ─────────────────────────
         // Scenario: producer called objectMapper.writeValueAsString() twice,
         // yielding a JSON-encoded string whose unescaped content is the real JSON.
-        // e.g.  "\"{ \\\"tranId\\\": \\\"TXN-001\\\" }\""
         if (trimmed.startsWith("\"")) {
             try {
                 String unwrapped = objectMapper.readValue(trimmed, String.class);
@@ -105,7 +104,7 @@ public class EventPayloadSanitizer {
                             + "stripped one JSON string layer");
                     return Optional.of(unwrapped);
                 }
-            } catch (Exception ignored) {
+            } catch (Exception _) {
                 // trimmed value is not a valid JSON string — fall through
             }
         }
@@ -119,7 +118,7 @@ public class EventPayloadSanitizer {
             log.info("[SANITIZER] Rectified ✓ | strategy=LENIENT_RESERIALIZE | "
                     + "accepted single-quotes / trailing-commas / unquoted-keys / comments");
             return Optional.of(canonical);
-        } catch (Exception ignored) {
+        } catch (Exception _) {
             // truly irrecoverable
         }
 
@@ -139,7 +138,7 @@ public class EventPayloadSanitizer {
         try {
             objectMapper.readTree(s);
             return true;
-        } catch (Exception e) {
+        } catch (Exception _) {
             return false;
         }
     }

@@ -44,7 +44,7 @@ public final class LogSanitizer {
     public static Object maskPayload(Object value) {
         if (value == null) return null;
         if (value instanceof java.util.Map<?, ?> map) {
-            java.util.Map<String, Object> out = new java.util.LinkedHashMap<>(map.size());
+            java.util.Map<String, Object> out = java.util.LinkedHashMap.newLinkedHashMap(map.size());
             for (var e : map.entrySet()) {
                 String k = String.valueOf(e.getKey());
                 Object v = e.getValue();

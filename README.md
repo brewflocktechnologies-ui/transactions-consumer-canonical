@@ -340,3 +340,13 @@ src/test/...                                ← 33 tests, no DB required
 Dockerfile, .dockerignore, docker-compose.yml
 postman/Send_Transactions_API.postman_collection.json
 ```
+URL	http://localhost:9000
+Username	admin
+Password	Admin@sonar2
+Analysis Token	sqa_bbec27c41080ff590cccde40d512312cddfa3483
+
+
+.\mvnw.cmd -B -ntp clean verify sonar:sonar `
+    "-Dsonar.token=sqa_bbec27c41080ff590cccde40d512312cddfa3483" `
+"-Dsonar.host.url=http://localhost:9000" `
+"-Dsonar.projectKey=transactions-consumer-canonical"

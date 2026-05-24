@@ -10,6 +10,9 @@ import com.poc.transactions_consumer_canonical.repository.GenericTableRepository
 import com.poc.transactions_consumer_canonical.validation.MetadataValidator;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -36,6 +39,19 @@ public class MetadataTransactionService {
     private final GenericTableRepository repo;
     private final MetadataValidator validator;
 
+    /**
+     * Self-reference injected via setter (lazy) so {@code @Transactional} calls on
+     * {@link #findByPk} route through the Spring proxy rather than bypassing it via
+     * {@code this} (satisfies S6809; setter injection satisfies S6813).
+     */
+    private MetadataTransactionService self;
+
+    @Autowired
+    @Lazy
+    public void setSelf(@NonNull MetadataTransactionService self) {
+        this.self = self;
+    }
+
     // ──────────────────────────────────────────────────────────
     // Upsert
     // ──────────────────────────────────────────────────────────
@@ -57,54 +73,75 @@ public class MetadataTransactionService {
 
         // Children
         for (ChildMetadata cm : parent.getChildren()) {
-            Object section = payload.get(cm.getJsonName());
-            if (section == null) {
-                log.debug("Child {} not present in payload — leaving untouched", cm.getJsonName());
-                continue;
-            }
-            TableMetadata child = registry.require(cm.getTableRef());
-            String fkJson = child.jsonNameForColumn(cm.getChildKey());
-
-            if (cm.isOneToOne()) {
-                @SuppressWarnings("unchecked")
-                Map<String, Object> childMap = (Map<String, Object>) section;
-                childMap.put(fkJson, pk);
-                throwIfInvalid(child, childMap);
-                log.debug("Upsert child {} (1:1) for parent pk={}", child.getName(), pk);
-                repo.upsert(child.getName(), childMap);
-            } else { // ONE_TO_MANY
-                @SuppressWarnings("unchecked")
-                List<Map<String, Object>> list = (List<Map<String, Object>>) section;
-                if (list.isEmpty()) {
-                    log.debug("Empty child list — deleting all {} rows for parent pk={}",
-                            child.getName(), pk);
-                    repo.deleteByFk(child.getName(), cm.getChildKey(), pk);
-                } else {
-                    List<Object> keepIds = new ArrayList<>(list.size());
-                    String idJson = cm.getIdJsonName();
-                    for (Map<String, Object> row : list) {
-                        if (cm.isGenerateIdIfMissing() && idJson != null) {
-                            Object id = row.get(idJson);
-                            if (id == null || (id instanceof String s && s.isBlank())) {
-                                row.put(idJson, UUID.randomUUID().toString());
-                            }
-                        }
-                        row.put(fkJson, pk);
-                        throwIfInvalid(child, row);
-                        if (idJson != null) keepIds.add(row.get(idJson));
-                    }
-                    log.debug("Merge {} child rows for parent pk={}", list.size(), pk);
-                    repo.mergeAll(child.getName(), list);
-                    if (!keepIds.isEmpty()) {
-                        repo.deleteByFkNotIn(child.getName(), cm.getChildKey(), pk, keepIds);
-                    }
-                }
-            }
+            processChild(cm, pk, payload);
         }
 
-        return findByPk(parentAlias, pk)
+        return self.findByPk(parentAlias, pk)
                 .orElseThrow(() -> new IllegalStateException(
                         "Upsert succeeded but findByPk returned empty for pk=" + pk));
+    }
+
+    // ── Child processing helpers ──────────────────────────────
+
+    private void processChild(ChildMetadata cm, Object pk, Map<String, Object> payload) {
+        Object section = payload.get(cm.getJsonName());
+        if (section == null) {
+            log.debug("Child {} not present in payload — leaving untouched", cm.getJsonName());
+            return;
+        }
+        TableMetadata child = registry.require(cm.getTableRef());
+        String fkJson = child.jsonNameForColumn(cm.getChildKey());
+
+        if (cm.isOneToOne()) {
+            processOneToOneChild(child, pk, section, fkJson);
+        } else {
+            processOneToManyChild(cm, child, pk, section, fkJson);
+        }
+    }
+
+    @SuppressWarnings("unchecked")
+    private void processOneToOneChild(TableMetadata child, Object pk,
+                                      Object section, String fkJson) {
+        Map<String, Object> childMap = (Map<String, Object>) section;
+        childMap.put(fkJson, pk);
+        throwIfInvalid(child, childMap);
+        log.debug("Upsert child {} (1:1) for parent pk={}", child.getName(), pk);
+        repo.upsert(child.getName(), childMap);
+    }
+
+    @SuppressWarnings("unchecked")
+    private void processOneToManyChild(ChildMetadata cm, TableMetadata child,
+                                       Object pk, Object section, String fkJson) {
+        List<Map<String, Object>> list = (List<Map<String, Object>>) section;
+        String idJson = cm.getIdJsonName();
+
+        if (list.isEmpty()) {
+            log.debug("Empty child list — deleting all {} rows for parent pk={}",
+                    child.getName(), pk);
+            repo.deleteByFk(child.getName(), cm.getChildKey(), pk);
+            return;
+        }
+
+        List<Object> keepIds = new ArrayList<>(list.size());
+        for (Map<String, Object> row : list) {
+            assignIdIfMissing(cm, idJson, row);
+            row.put(fkJson, pk);
+            throwIfInvalid(child, row);
+            if (idJson != null) keepIds.add(row.get(idJson));
+        }
+        log.debug("Merge {} child rows for parent pk={}", list.size(), pk);
+        repo.mergeAll(child.getName(), list);
+        if (!keepIds.isEmpty()) {
+            repo.deleteByFkNotIn(child.getName(), cm.getChildKey(), pk, keepIds);
+        }
+    }
+
+    private void assignIdIfMissing(ChildMetadata cm, String idJson, Map<String, Object> row) {
+        if (!cm.isGenerateIdIfMissing() || idJson == null) return;
+        Object id = row.get(idJson);
+        if (id == null || (id instanceof String s && s.isBlank())) {
+            row.put(idJson, UUID.randomUUID().toString());
+        }
     }
 
     // ──────────────────────────────────────────────────────────

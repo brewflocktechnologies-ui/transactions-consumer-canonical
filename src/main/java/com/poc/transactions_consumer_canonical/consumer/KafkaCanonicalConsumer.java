@@ -41,6 +41,9 @@ import java.util.Optional;
 @Slf4j
 public class KafkaCanonicalConsumer {
 
+    private static final String OUTER_SEPARATOR = "===============================================";
+    private static final String INNER_SEPARATOR = "-----------------------------------------------";
+
     private final ObjectMapper              objectMapper;
     private final CanonicalMappingRegistry  mappingRegistry;
     private final CanonicalRuleEngine       ruleEngine;
@@ -53,7 +56,7 @@ public class KafkaCanonicalConsumer {
             groupId = "${spring.kafka.consumer.group-id}"
     )
     public void consume(String message) {
-        log.info("===============================================");
+        log.info(OUTER_SEPARATOR);
         log.info("[CONSUMER]  Message received from Kafka");
 
         // ── Step 1: deserialise EventEnvelope ───────────────────────────────
@@ -65,7 +68,7 @@ public class KafkaCanonicalConsumer {
         // ── Step 2: check ignore flag (set upstream) ─────────────────────────
         if (envelope.isIgnore()) {
             log.info("[CONSUMER]  ignore=true — skipping (flagged upstream)");
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return;
         }
 
@@ -77,7 +80,7 @@ public class KafkaCanonicalConsumer {
             log.warn("[CONSUMER]  No canonical mapping for eventName='{}' — skipping. "
                     + "Add a YAML entry under canonical-mappings/ to handle this event.",
                     envelope.getEventName());
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return;
         }
 
@@ -89,7 +92,7 @@ public class KafkaCanonicalConsumer {
             log.info("[CONSUMER]  Message blocked by rule engine | "
                     + "eventType={} eventName={} eventSource={}",
                     mapping.getEventType(), envelope.getEventName(), envelope.getEventSource());
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return;
         }
 
@@ -100,7 +103,7 @@ public class KafkaCanonicalConsumer {
         if (sanitized.isEmpty()) {
             log.warn("[CONSUMER]  eventPayload is invalid and cannot be rectified — skipping | "
                     + "eventType={} eventName={}", mapping.getEventType(), envelope.getEventName());
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return;
         }
         // Apply the (potentially rectified) payload back — no-op when unchanged
@@ -129,7 +132,7 @@ public class KafkaCanonicalConsumer {
                     tranId, mapping.getEventType(), e.getMessage(), e);
         }
 
-        log.info("===============================================");
+        log.info(OUTER_SEPARATOR);
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
@@ -139,7 +142,7 @@ public class KafkaCanonicalConsumer {
             return objectMapper.readValue(raw, EventEnvelope.class);
         } catch (JsonProcessingException e) {
             log.error("[CONSUMER]  Failed to deserialise EventEnvelope: {}", e.getMessage());
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return null;
         }
     }
@@ -151,13 +154,13 @@ public class KafkaCanonicalConsumer {
         } catch (JsonProcessingException e) {
             log.error("[CONSUMER]  Failed to deserialise TransactionEventAxonMessage: {}",
                     e.getMessage());
-            log.info("===============================================");
+            log.info(OUTER_SEPARATOR);
             return null;
         }
     }
 
     private void logEnvelope(EventEnvelope e) {
-        log.info("-----------------------------------------------");
+        log.info(INNER_SEPARATOR);
         log.info("[CONSUMER]  EventEnvelope");
         log.info("  eventId          : {}", e.getEventId());
         log.info("  eventName        : {}", e.getEventName());
@@ -170,7 +173,7 @@ public class KafkaCanonicalConsumer {
     }
 
     private void logTransaction(TransactionEventAxonMessage txn) {
-        log.info("-----------------------------------------------");
+        log.info(INNER_SEPARATOR);
         log.info("[CONSUMER]  TransactionEventAxonMessage");
         log.info("  tranId              : {}", txn.getTranId());
         log.info("  tranAmt             : {}", txn.getTranAmt());

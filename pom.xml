@@ -28,6 +28,47 @@
 	</scm>
 	<properties>
 		<java.version>25</java.version>
+
+		<!-- ── Encoding ────────────────────────────────────────────────────── -->
+		<project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
+		<project.reporting.outputEncoding>UTF-8</project.reporting.outputEncoding>
+
+		<!-- ── SonarQube ────────────────────────────────────────────────────
+		     Override sonar.host.url on the CLI for SonarCloud:
+		       -Dsonar.host.url=https://sonarcloud.io -Dsonar.token=<token>
+		     ─────────────────────────────────────────────────────────────── -->
+		<sonar.projectKey>transactions-consumer-canonical</sonar.projectKey>
+		<sonar.projectName>Transactions Consumer Canonical</sonar.projectName>
+		<sonar.host.url>http://localhost:9000</sonar.host.url>
+
+		<!-- JaCoCo XML report consumed by SonarQube -->
+		<sonar.coverage.jacoco.xmlReportPaths>
+			${project.build.directory}/site/jacoco/jacoco.xml
+		</sonar.coverage.jacoco.xmlReportPaths>
+		<sonar.java.coveragePlugin>jacoco</sonar.java.coveragePlugin>
+
+		<!--
+		  Exclude boilerplate / auto-generated code from analysis and coverage:
+		    • dto / model / messagesdto  — pure data carriers (Lombok @Data, no logic)
+		    • config                     — Spring wiring, no business logic
+		    • *Application.java          — entry point
+		-->
+		<sonar.exclusions>
+			**/dto/**,
+			**/model/**,
+			**/messagesdto/**,
+			**/*Application.java,
+			**/config/**
+		</sonar.exclusions>
+		<sonar.coverage.exclusions>
+			**/dto/**,
+			**/model/**,
+			**/messagesdto/**,
+			**/*Application.java,
+			**/config/**
+		</sonar.coverage.exclusions>
+		<!-- Suppress duplication warnings on DTO boilerplate -->
+		<sonar.cpd.exclusions>**/dto/**,**/model/**,**/messagesdto/**</sonar.cpd.exclusions>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -151,6 +192,39 @@
 						</configuration>
 					</execution>
 				</executions>
+			</plugin>
+		<!-- ── JaCoCo — code-coverage instrumentation & XML report ───────── -->
+			<plugin>
+				<groupId>org.jacoco</groupId>
+				<artifactId>jacoco-maven-plugin</artifactId>
+				<version>0.8.13</version>
+				<executions>
+					<!-- Attach JaCoCo agent so bytecode is instrumented during tests -->
+					<execution>
+						<id>jacoco-prepare-agent</id>
+						<goals>
+							<goal>prepare-agent</goal>
+						</goals>
+					</execution>
+					<!-- Generate XML + HTML reports in target/site/jacoco/ -->
+					<execution>
+						<id>jacoco-report</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>report</goal>
+						</goals>
+					</execution>
+				</executions>
+			</plugin>
+
+			<!-- ── SonarQube Maven Scanner ─────────────────────────────────────
+			     Not bound to a lifecycle phase; invoked on-demand:
+			       mvnw clean verify sonar:sonar -Dsonar.token=<token>
+			     ─────────────────────────────────────────────────────────────── -->
+			<plugin>
+				<groupId>org.sonarsource.scanner.maven</groupId>
+				<artifactId>sonar-maven-plugin</artifactId>
+				<version>3.11.0.3922</version>
 			</plugin>
 		</plugins>
 	</build>

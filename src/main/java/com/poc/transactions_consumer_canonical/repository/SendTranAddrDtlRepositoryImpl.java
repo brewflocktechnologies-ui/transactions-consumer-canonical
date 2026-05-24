@@ -17,6 +17,8 @@ import java.util.List;
 @RequiredArgsConstructor
 public class SendTranAddrDtlRepositoryImpl implements SendTranAddrDtlRepository {
 
+    private static final String TRAN_ID_PARAM = "tranId";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final SendTranAddrDtlRowMapper rowMapper;
     private final SqlQueries sqlQueries;
@@ -36,13 +38,13 @@ public class SendTranAddrDtlRepositoryImpl implements SendTranAddrDtlRepository 
     public List<SendTranAddrDtl> findByTranId(String tranId) {
         log.debug("SELECT SEND_TRAN_ADDR_DTL tranId={}", tranId);
         return jdbc.query(sqlQueries.sendTranAddrDtlSelectByTranId(),
-                new MapSqlParameterSource("tranId", tranId), rowMapper);
+                new MapSqlParameterSource(TRAN_ID_PARAM, tranId), rowMapper);
     }
 
     @Override
     public void deleteByTranId(String tranId) {
         log.debug("DELETE SEND_TRAN_ADDR_DTL tranId={}", tranId);
-        int rows = jdbc.update(sqlQueries.sendTranAddrDtlDeleteByTranId(), new MapSqlParameterSource("tranId", tranId));
+        int rows = jdbc.update(sqlQueries.sendTranAddrDtlDeleteByTranId(), new MapSqlParameterSource(TRAN_ID_PARAM, tranId));
         log.debug("DELETE SEND_TRAN_ADDR_DTL removed {} rows for tranId={}", rows, tranId);
     }
 
@@ -50,14 +52,14 @@ public class SendTranAddrDtlRepositoryImpl implements SendTranAddrDtlRepository 
     public void deleteByTranIdNotIn(String tranId, List<String> keepIds) {
         log.debug("DELETE SEND_TRAN_ADDR_DTL obsolete addresses tranId={} keepCount={}", tranId, keepIds.size());
         int rows = jdbc.update(sqlQueries.sendTranAddrDtlDeleteByTranIdNotIn(),
-                new MapSqlParameterSource("tranId", tranId).addValue("ids", keepIds));
+                new MapSqlParameterSource(TRAN_ID_PARAM, tranId).addValue("ids", keepIds));
         log.debug("DELETE SEND_TRAN_ADDR_DTL removed {} obsolete rows for tranId={}", rows, tranId);
     }
 
     private MapSqlParameterSource toParams(SendTranAddrDtl a) {
         return new MapSqlParameterSource()
                 .addValue("id",           a.getId(),           Types.VARCHAR)
-                .addValue("tranId",       a.getTranId(),       Types.VARCHAR)
+                .addValue(TRAN_ID_PARAM,  a.getTranId(),       Types.VARCHAR)
                 .addValue("addrType",     a.getAddrType(),     Types.VARCHAR)
                 .addValue("stLine1",      a.getStLine1(),      Types.VARCHAR)
                 .addValue("stLine2",      a.getStLine2(),      Types.VARCHAR)

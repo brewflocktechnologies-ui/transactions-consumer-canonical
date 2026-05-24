@@ -17,6 +17,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SendRecipDtlRepositoryImpl implements SendRecipDtlRepository {
 
+    private static final String TRAN_ID_PARAM = "tranId";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final SendRecipDtlRowMapper rowMapper;
     private final SqlQueries sqlQueries;
@@ -33,20 +35,20 @@ public class SendRecipDtlRepositoryImpl implements SendRecipDtlRepository {
         try {
             return Optional.ofNullable(
                     jdbc.queryForObject(sqlQueries.sendRecipDtlSelectByTranId(),
-                            new MapSqlParameterSource("tranId", tranId), rowMapper));
-        } catch (EmptyResultDataAccessException e) {
+                            new MapSqlParameterSource(TRAN_ID_PARAM, tranId), rowMapper));
+        } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
     }
 
     @Override
     public void deleteByTranId(String tranId) {
-        jdbc.update(sqlQueries.sendRecipDtlDelete(), new MapSqlParameterSource("tranId", tranId));
+        jdbc.update(sqlQueries.sendRecipDtlDelete(), new MapSqlParameterSource(TRAN_ID_PARAM, tranId));
     }
 
     private MapSqlParameterSource toParams(SendRecipDtl r) {
         return new MapSqlParameterSource()
-                .addValue("tranId",              r.getTranId(),              Types.VARCHAR)
+                .addValue(TRAN_ID_PARAM,         r.getTranId(),              Types.VARCHAR)
                 .addValue("sendFirstNam",         r.getSendFirstNam(),        Types.VARCHAR)
                 .addValue("sendMidNam",           r.getSendMidNam(),          Types.VARCHAR)
                 .addValue("sendLstNam",           r.getSendLstNam(),          Types.VARCHAR)

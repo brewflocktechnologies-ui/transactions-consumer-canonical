@@ -6,6 +6,9 @@ import com.poc.transactions_consumer_canonical.model.*;
 import com.poc.transactions_consumer_canonical.repository.*;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.context.annotation.Lazy;
+import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -22,6 +25,19 @@ public class SendTransactionServiceImpl implements SendTransactionService {
     private final SendTranDtlRepository dtlRepo;
     private final SendRecipDtlRepository recipRepo;
     private final SendTranAddrDtlRepository addrRepo;
+
+    /**
+     * Self-reference injected via setter (lazy) so {@code @Transactional} calls on
+     * {@link #findById} route through the Spring proxy rather than bypassing it via
+     * {@code this} (satisfies S6809; setter injection satisfies S6813).
+     */
+    private SendTransactionService self;
+
+    @Autowired
+    @Lazy
+    public void setSelf(@NonNull SendTransactionService self) {
+        this.self = self;
+    }
 
     // ── Upsert ───────────────────────────────────────────────
 
@@ -64,7 +80,7 @@ public class SendTransactionServiceImpl implements SendTransactionService {
         }
 
         log.info("Upsert complete for tranId={}", tranId);
-        return findById(tranId);
+        return self.findById(tranId);
     }
 
     // ── Query ────────────────────────────────────────────────

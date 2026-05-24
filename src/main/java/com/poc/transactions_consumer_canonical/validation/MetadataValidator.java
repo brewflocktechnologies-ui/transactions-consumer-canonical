@@ -21,27 +21,38 @@ public class MetadataValidator {
             return errors;
         }
         for (ColumnMetadata col : t.getColumns()) {
-            if (col.isAudit() || col.isReadOnly()) continue;
-            String key = col.getJsonName();
-            if (key == null) continue;
-            Object v = payload.get(key);
-
-            if (col.isRequired() && v == null) {
-                errors.put(key, "must not be null");
-                continue;
-            }
-            if (v == null) continue;
-
-            if (v instanceof String s) {
-                if (col.getMaxLength() != null && s.length() > col.getMaxLength()) {
-                    errors.put(key, "must not exceed " + col.getMaxLength() + " characters");
-                }
-                if (col.getPattern() != null && !col.getPattern().isBlank()
-                        && !s.matches(col.getPattern())) {
-                    errors.put(key, "does not match required pattern");
-                }
-            }
+            validateColumn(col, payload, errors);
         }
         return errors;
+    }
+
+    private void validateColumn(ColumnMetadata col,
+                                Map<String, Object> payload,
+                                Map<String, String> errors) {
+        if (col.isAudit() || col.isReadOnly()) return;
+        String key = col.getJsonName();
+        if (key == null) return;
+        Object v = payload.get(key);
+
+        if (col.isRequired() && v == null) {
+            errors.put(key, "must not be null");
+            return;
+        }
+        if (v instanceof String s) {
+            validateStringConstraints(col, key, s, errors);
+        }
+    }
+
+    private void validateStringConstraints(ColumnMetadata col,
+                                           String key,
+                                           String s,
+                                           Map<String, String> errors) {
+        if (col.getMaxLength() != null && s.length() > col.getMaxLength()) {
+            errors.put(key, "must not exceed " + col.getMaxLength() + " characters");
+        }
+        if (col.getPattern() != null && !col.getPattern().isBlank()
+                && !s.matches(col.getPattern())) {
+            errors.put(key, "does not match required pattern");
+        }
     }
 }

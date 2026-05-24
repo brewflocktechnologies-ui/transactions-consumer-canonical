@@ -83,6 +83,14 @@ public class TableMetadata {
 
     /** Validates internal consistency. Throws on any problem. Called by MetadataRegistry at startup. */
     public void validate() {
+        validateRequiredFields();
+        validateColumns();
+        validateChildren();
+    }
+
+    // ── Validation helpers ────────────────────────────────────
+
+    private void validateRequiredFields() {
         if (name == null || name.isBlank())
             throw new IllegalStateException("Table metadata missing 'name'");
         if (alias == null || alias.isBlank())
@@ -93,49 +101,58 @@ public class TableMetadata {
             throw new IllegalStateException("Table " + name + " missing 'pkJsonName'");
         if (columns == null || columns.isEmpty())
             throw new IllegalStateException("Table " + name + " has no columns");
+    }
 
-        Set<String> seenDb = new HashSet<>();
+    private void validateColumns() {
+        Set<String> seenDb   = new HashSet<>();
         Set<String> seenJson = new HashSet<>();
         boolean pkFound = false;
         for (ColumnMetadata c : columns) {
-            if (c.getDbColumn() == null || c.getDbColumn().isBlank())
-                throw new IllegalStateException("Table " + name + " has a column missing dbColumn");
-            if (c.getSqlType() == null || c.getSqlType().isBlank())
-                throw new IllegalStateException("Table " + name + " column " + c.getDbColumn()
-                        + " missing sqlType");
-            if (!seenDb.add(c.getDbColumn().toUpperCase()))
-                throw new IllegalStateException("Table " + name + " duplicate dbColumn "
-                        + c.getDbColumn());
-            // jsonName may be null only for pure DB-managed audit columns
-            if (c.getJsonName() != null && !c.getJsonName().isBlank()
-                    && !seenJson.add(c.getJsonName()))
-                throw new IllegalStateException("Table " + name + " duplicate jsonName "
-                        + c.getJsonName());
-            if (c.isClob() && c.isNullGuard())
-                throw new IllegalStateException("Table " + name + " column " + c.getDbColumn()
-                        + ": clob:true requires nullGuard:false (Oracle COALESCE/CLOB type mismatch)");
+            validateColumn(c, seenDb, seenJson);
             if (c.isPk()) pkFound = true;
-            // sanity: jdbcType() must not throw
-            c.jdbcType();
+            c.jdbcType(); // sanity: jdbcType() must not throw
         }
         if (!pkFound)
             throw new IllegalStateException("Table " + name + " has no column with pk:true");
         if (pkColumn() == null)
             throw new IllegalStateException("Table " + name + " pk '" + pk
                     + "' does not match any column with pk:true");
+    }
 
-        if (children != null) {
-            for (ChildMetadata cm : children) {
-                if (cm.getTableRef() == null || cm.getTableRef().isBlank())
-                    throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
-                            + " missing tableRef");
-                if (!cm.isOneToOne() && !cm.isOneToMany())
-                    throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
-                            + " has invalid cardinality " + cm.getCardinality());
-                if (cm.getChildKey() == null || cm.getChildKey().isBlank())
-                    throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
-                            + " missing childKey");
-            }
+    private void validateColumn(ColumnMetadata c, Set<String> seenDb, Set<String> seenJson) {
+        if (c.getDbColumn() == null || c.getDbColumn().isBlank())
+            throw new IllegalStateException("Table " + name + " has a column missing dbColumn");
+        if (c.getSqlType() == null || c.getSqlType().isBlank())
+            throw new IllegalStateException("Table " + name + " column " + c.getDbColumn()
+                    + " missing sqlType");
+        if (!seenDb.add(c.getDbColumn().toUpperCase()))
+            throw new IllegalStateException("Table " + name + " duplicate dbColumn "
+                    + c.getDbColumn());
+        if (c.getJsonName() != null && !c.getJsonName().isBlank()
+                && !seenJson.add(c.getJsonName()))
+            throw new IllegalStateException("Table " + name + " duplicate jsonName "
+                    + c.getJsonName());
+        if (c.isClob() && c.isNullGuard())
+            throw new IllegalStateException("Table " + name + " column " + c.getDbColumn()
+                    + ": clob:true requires nullGuard:false (Oracle COALESCE/CLOB type mismatch)");
+    }
+
+    private void validateChildren() {
+        if (children == null) return;
+        for (ChildMetadata cm : children) {
+            validateChild(cm);
         }
+    }
+
+    private void validateChild(ChildMetadata cm) {
+        if (cm.getTableRef() == null || cm.getTableRef().isBlank())
+            throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
+                    + " missing tableRef");
+        if (!cm.isOneToOne() && !cm.isOneToMany())
+            throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
+                    + " has invalid cardinality " + cm.getCardinality());
+        if (cm.getChildKey() == null || cm.getChildKey().isBlank())
+            throw new IllegalStateException("Table " + name + " child " + cm.getJsonName()
+                    + " missing childKey");
     }
 }

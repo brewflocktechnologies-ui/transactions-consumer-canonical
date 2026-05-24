@@ -44,15 +44,23 @@ public interface ValueConverter {
                         : json.convertValue(v, LocalDateTime.class);
                 case "DATE" -> v instanceof LocalDate ld ? ld
                         : json.convertValue(v, LocalDate.class);
-                case "NUMERIC" -> v instanceof BigDecimal bd ? bd
-                        : v instanceof Number n ? new BigDecimal(n.toString())
-                        : new BigDecimal(v.toString());
-                case "INTEGER" -> v instanceof Integer i ? i
-                        : v instanceof Number n ? n.intValue()
-                        : Integer.parseInt(v.toString());
+                case "NUMERIC"  -> coerceToDecimal(v);
+                case "INTEGER"  -> coerceToInteger(v);
                 // VARCHAR, CLOB
                 default -> v instanceof String s ? s : v.toString();
             };
+        }
+
+        private static Object coerceToDecimal(Object v) {
+            if (v instanceof BigDecimal bd) return bd;
+            if (v instanceof Number n) return new BigDecimal(n.toString());
+            return new BigDecimal(v.toString());
+        }
+
+        private static Object coerceToInteger(Object v) {
+            if (v instanceof Integer i) return i;
+            if (v instanceof Number n) return n.intValue();
+            return Integer.parseInt(v.toString());
         }
 
         @Override
@@ -66,7 +74,7 @@ public interface ValueConverter {
         @Override
         public Object toJdbc(Object v, ColumnMetadata col) {
             if (v == null) return null;
-            if (v instanceof Boolean b) return b ? 1 : 0;
+            if (v instanceof Boolean b) return b.booleanValue() ? 1 : 0;
             if (v instanceof Number n) return n.intValue() == 0 ? 0 : 1;
             if (v instanceof String s) {
                 if (s.equalsIgnoreCase("true") || s.equals("1"))  return 1;

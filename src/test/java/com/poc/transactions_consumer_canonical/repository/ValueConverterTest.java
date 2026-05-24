@@ -75,7 +75,8 @@ class ValueConverterTest {
 
     @Test
     void booleanAsInt_throws_on_unparseable_input() {
+        ColumnMetadata c = col("NUMERIC");
         assertThrows(IllegalArgumentException.class,
-                () -> booleanAsInt.toJdbc("maybe", col("NUMERIC")));
+                () -> booleanAsInt.toJdbc("maybe", c));
     }
 }

@@ -3,9 +3,13 @@ package com.poc.transactions_consumer_canonical.metadata;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.dataformat.yaml.YAMLFactory;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.Arguments;
+import org.junit.jupiter.params.provider.MethodSource;
 
 import java.io.ByteArrayInputStream;
 import java.nio.charset.StandardCharsets;
+import java.util.stream.Stream;
 
 import static org.junit.jupiter.api.Assertions.*;
 
@@ -40,50 +44,54 @@ class MetadataRegistryTest {
         assertEquals("id", t.pkColumn().getJsonName());
     }
 
-    @Test
-    void missing_pk_column_fails_validation() throws Exception {
-        TableMetadata t = parse("""
-                name: T1
-                alias: t1
-                pk: ID
-                pkJsonName: id
-                columns:
-                  - { jsonName: name, dbColumn: NAME, sqlType: VARCHAR }
-                """);
+    @ParameterizedTest
+    @MethodSource("validationFailureProvider")
+    void validation_fails_with_expected_message(String yamlString, String expectedFragment)
+            throws Exception {
+        TableMetadata t = parse(yamlString);
         IllegalStateException ex = assertThrows(IllegalStateException.class, t::validate);
-        assertTrue(ex.getMessage().contains("pk:true"), ex.getMessage());
+        assertTrue(ex.getMessage().contains(expectedFragment), ex.getMessage());
     }
 
-    @Test
-    void duplicate_db_column_fails_validation() throws Exception {
-        TableMetadata t = parse("""
-                name: T1
-                alias: t1
-                pk: ID
-                pkJsonName: id
-                columns:
-                  - { jsonName: id,    dbColumn: ID,   sqlType: VARCHAR, pk: true }
-                  - { jsonName: name1, dbColumn: NAME, sqlType: VARCHAR }
-                  - { jsonName: name2, dbColumn: NAME, sqlType: VARCHAR }
-                """);
-        IllegalStateException ex = assertThrows(IllegalStateException.class, t::validate);
-        assertTrue(ex.getMessage().contains("duplicate dbColumn"), ex.getMessage());
-    }
-
-    @Test
-    void clob_with_null_guard_fails_validation() throws Exception {
-        // Oracle COALESCE cannot mix VARCHAR2 bind param with CLOB column — guard must be false.
-        TableMetadata t = parse("""
-                name: T1
-                alias: t1
-                pk: ID
-                pkJsonName: id
-                columns:
-                  - { jsonName: id,   dbColumn: ID,   sqlType: VARCHAR, pk: true, nullGuard: false }
-                  - { jsonName: blob, dbColumn: BLOB, sqlType: CLOB, clob: true, nullGuard: true }
-                """);
-        IllegalStateException ex = assertThrows(IllegalStateException.class, t::validate);
-        assertTrue(ex.getMessage().contains("nullGuard:false"), ex.getMessage());
+    static Stream<Arguments> validationFailureProvider() {
+        return Stream.of(
+                Arguments.of(
+                        """
+                        name: T1
+                        alias: t1
+                        pk: ID
+                        pkJsonName: id
+                        columns:
+                          - { jsonName: name, dbColumn: NAME, sqlType: VARCHAR }
+                        """,
+                        "pk:true"
+                ),
+                Arguments.of(
+                        """
+                        name: T1
+                        alias: t1
+                        pk: ID
+                        pkJsonName: id
+                        columns:
+                          - { jsonName: id,    dbColumn: ID,   sqlType: VARCHAR, pk: true }
+                          - { jsonName: name1, dbColumn: NAME, sqlType: VARCHAR }
+                          - { jsonName: name2, dbColumn: NAME, sqlType: VARCHAR }
+                        """,
+                        "duplicate dbColumn"
+                ),
+                Arguments.of(
+                        """
+                        name: T1
+                        alias: t1
+                        pk: ID
+                        pkJsonName: id
+                        columns:
+                          - { jsonName: id,   dbColumn: ID,   sqlType: VARCHAR, pk: true, nullGuard: false }
+                          - { jsonName: blob, dbColumn: BLOB, sqlType: CLOB, clob: true, nullGuard: true }
+                        """,
+                        "nullGuard:false"
+                )
+        );
     }
 
     @Test

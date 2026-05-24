@@ -18,6 +18,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SendTransactionRepositoryImpl implements SendTransactionRepository {
 
+    private static final String TRAN_ID_PARAM = "tranId";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final SendTransactionRowMapper rowMapper;
     private final SqlQueries sqlQueries;
@@ -34,8 +36,8 @@ public class SendTransactionRepositoryImpl implements SendTransactionRepository 
         try {
             return Optional.ofNullable(
                     jdbc.queryForObject(sqlQueries.sendTransactionsSelectById(),
-                            new MapSqlParameterSource("tranId", tranId), rowMapper));
-        } catch (EmptyResultDataAccessException e) {
+                            new MapSqlParameterSource(TRAN_ID_PARAM, tranId), rowMapper));
+        } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
     }
@@ -55,12 +57,13 @@ public class SendTransactionRepositoryImpl implements SendTransactionRepository 
 
     @Override
     public boolean deleteById(String tranId) {
-        return jdbc.update(sqlQueries.sendTransactionsDelete(), new MapSqlParameterSource("tranId", tranId)) > 0;
+        return jdbc.update(sqlQueries.sendTransactionsDelete(), new MapSqlParameterSource(TRAN_ID_PARAM, tranId)) > 0;
     }
 
     private MapSqlParameterSource toParams(SendTransaction t) {
+        Integer nonFinTxn = toIntFlag(t.getNonFinTxn());
         return new MapSqlParameterSource()
-                .addValue("tranId",           t.getTranId(),            Types.VARCHAR)
+                .addValue(TRAN_ID_PARAM,       t.getTranId(),            Types.VARCHAR)
                 .addValue("tranInitId",        t.getTranInitId(),         Types.VARCHAR)
                 .addValue("origInstId",        t.getOrigInstId(),         Types.VARCHAR)
                 .addValue("origInstNam",       t.getOrigInstNam(),        Types.VARCHAR)
@@ -96,7 +99,13 @@ public class SendTransactionRepositoryImpl implements SendTransactionRepository 
                 .addValue("acctHoldNam",       t.getAcctHoldNam(),        Types.VARCHAR)
                 .addValue("errCdDesc",         t.getErrCdDesc(),          Types.VARCHAR)
                 // null → COALESCE preserves the existing DB value; true/false → writes 1/0
-                .addValue("nonFinTxn",         t.getNonFinTxn() != null ? (t.getNonFinTxn() ? 1 : 0) : null, Types.NUMERIC)
+                .addValue("nonFinTxn",         nonFinTxn,                 Types.NUMERIC)
                 .addValue("ntwrkRespCdDesc",   t.getNtwrkRespCdDesc(),    Types.VARCHAR);
+    }
+
+    /** Converts a boxed Boolean flag to 1/0/null for a NUMBER(1,0) DB column. */
+    private static Integer toIntFlag(Boolean b) {
+        if (b == null) return null;
+        return b.booleanValue() ? 1 : 0;
     }
 }

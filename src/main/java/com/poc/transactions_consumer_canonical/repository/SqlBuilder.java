@@ -8,6 +8,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
+import java.util.Optional;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
@@ -33,6 +34,11 @@ public class SqlBuilder {
     private static final String UPDATED_AUDIT_COL_RPLCT = "RPLCTN_UPDT_TS";
     private static final String CREATED_AUDIT_COL       = "CRTE_TS";
 
+    private static final String SQL_SELECT      = "SELECT ";
+    private static final String SQL_FROM        = " FROM ";
+    private static final String SQL_WHERE       = " WHERE ";
+    private static final String SQL_DELETE_FROM = "DELETE FROM ";
+
     /** key = TABLE_NAME + "|" + op */
     private final Map<String, String> cache = new ConcurrentHashMap<>();
 
@@ -44,10 +50,10 @@ public class SqlBuilder {
     public String buildSelectByPk(TableMetadata t)       { return cache.computeIfAbsent(key(t, "SEL_PK"), k -> doBuildSelectByPk(t)); }
     public String buildSelectByFk(TableMetadata t, String fkCol) { return doBuildSelectByFk(t, fkCol); }
     public String buildSelectPage(TableMetadata t)       { return cache.computeIfAbsent(key(t, "SEL_PG"), k -> doBuildSelectPage(t)); }
-    public String buildCount(TableMetadata t)            { return cache.computeIfAbsent(key(t, "COUNT"),  k -> "SELECT COUNT(*) FROM " + t.qualifiedName()); }
-    public String buildDeleteByPk(TableMetadata t)       { return cache.computeIfAbsent(key(t, "DEL_PK"), k -> "DELETE FROM " + t.qualifiedName() + " WHERE " + t.getPk() + " = :" + t.pkColumn().getJsonName()); }
-    public String buildDeleteByFk(TableMetadata t, String fkCol) { return "DELETE FROM " + t.qualifiedName() + " WHERE " + fkCol + " = :fkValue"; }
-    public String buildDeleteByFkNotIn(TableMetadata t, String fkCol) { return "DELETE FROM " + t.qualifiedName() + " WHERE " + fkCol + " = :fkValue AND " + t.getPk() + " NOT IN (:keepIds)"; }
+    public String buildCount(TableMetadata t)            { return cache.computeIfAbsent(key(t, "COUNT"),  k -> SQL_SELECT + "COUNT(*)" + SQL_FROM + t.qualifiedName()); }
+    public String buildDeleteByPk(TableMetadata t)       { return cache.computeIfAbsent(key(t, "DEL_PK"), k -> SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + t.getPk() + " = :" + t.pkColumn().getJsonName()); }
+    public String buildDeleteByFk(TableMetadata t, String fkCol) { return SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + fkCol + " = :fkValue"; }
+    public String buildDeleteByFkNotIn(TableMetadata t, String fkCol) { return SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + fkCol + " = :fkValue AND " + t.getPk() + " NOT IN (:keepIds)"; }
 
     // ──────────────────────────────────────────────────────────
     // Implementations
@@ -61,81 +67,81 @@ public class SqlBuilder {
         sb.append("MERGE INTO ").append(t.qualifiedName()).append(" t\n");
         sb.append("USING (SELECT :").append(pkJson).append(" AS ").append(pkDb).append(" FROM DUAL) src\n");
         sb.append("ON (t.").append(pkDb).append(" = src.").append(pkDb).append(")\n");
-
-        // ── WHEN MATCHED THEN UPDATE SET ──
-        List<String> setClauses = new ArrayList<>();
-        for (ColumnMetadata c : t.getColumns()) {
-            if (c.isPk())         continue;
-            if (c.isReadOnly() && !c.isAudit()) continue;
-            if (c.isInsertOnly()) continue;
-
-            String col = c.getDbColumn().toUpperCase(Locale.ROOT);
-            if (c.isAudit()) {
-                if (CREATED_AUDIT_COL.equals(col)) continue;
-                if (UPDATED_AUDIT_COL_UPDT.equals(col) || UPDATED_AUDIT_COL_RPLCT.equals(col)) {
-                    setClauses.add(c.getDbColumn() + " = SYSTIMESTAMP");
-                }
-                continue;
-            }
-            if (c.isClob()) {
-                setClauses.add(c.getDbColumn()
-                        + " = CASE WHEN :" + c.getJsonName() + " IS NOT NULL THEN TO_CLOB(:"
-                        + c.getJsonName() + ") ELSE t." + c.getDbColumn() + " END");
-            } else if (c.isNullGuard()) {
-                setClauses.add(c.getDbColumn() + " = COALESCE(:" + c.getJsonName()
-                        + ", t." + c.getDbColumn() + ")");
-            } else {
-                setClauses.add(c.getDbColumn() + " = :" + c.getJsonName());
-            }
-        }
         sb.append("WHEN MATCHED THEN UPDATE SET\n    ")
-          .append(String.join(",\n    ", setClauses)).append("\n");
-
-        // ── WHEN NOT MATCHED THEN INSERT ──
-        List<String> insertCols   = new ArrayList<>();
-        List<String> insertValues = new ArrayList<>();
-        for (ColumnMetadata c : t.getColumns()) {
-            if (c.isReadOnly() && !c.isAudit()) continue;
-            String col = c.getDbColumn().toUpperCase(Locale.ROOT);
-            insertCols.add(c.getDbColumn());
-            if (c.isAudit()) {
-                // All known audit cols get SYSTIMESTAMP on insert
-                if (CREATED_AUDIT_COL.equals(col)
-                        || UPDATED_AUDIT_COL_UPDT.equals(col)
-                        || UPDATED_AUDIT_COL_RPLCT.equals(col)) {
-                    insertValues.add("SYSTIMESTAMP");
-                } else {
-                    insertValues.add("SYSTIMESTAMP"); // any other audit col follows same convention
-                }
-            } else {
-                insertValues.add(":" + c.getJsonName());
-            }
-        }
+          .append(String.join(",\n    ", buildSetClauses(t))).append("\n");
         sb.append("WHEN NOT MATCHED THEN INSERT (\n    ")
-          .append(String.join(", ", insertCols))
+          .append(String.join(", ", buildInsertCols(t)))
           .append("\n) VALUES (\n    ")
-          .append(String.join(", ", insertValues))
+          .append(String.join(", ", buildInsertValues(t)))
           .append("\n)");
-
         return sb.toString();
     }
 
+    private List<String> buildSetClauses(TableMetadata t) {
+        List<String> setClauses = new ArrayList<>();
+        for (ColumnMetadata c : t.getColumns()) {
+            if (c.isPk() || (c.isReadOnly() && !c.isAudit()) || c.isInsertOnly()) continue;
+            setClause(c).ifPresent(setClauses::add);
+        }
+        return setClauses;
+    }
+
+    private Optional<String> setClause(ColumnMetadata c) {
+        String col = c.getDbColumn().toUpperCase(Locale.ROOT);
+        if (c.isAudit()) {
+            if (CREATED_AUDIT_COL.equals(col)) return Optional.empty();
+            if (UPDATED_AUDIT_COL_UPDT.equals(col) || UPDATED_AUDIT_COL_RPLCT.equals(col)) {
+                return Optional.of(c.getDbColumn() + " = SYSTIMESTAMP");
+            }
+            return Optional.empty();
+        }
+        if (c.isClob()) {
+            return Optional.of(c.getDbColumn()
+                    + " = CASE WHEN :" + c.getJsonName() + " IS NOT NULL THEN TO_CLOB(:"
+                    + c.getJsonName() + ") ELSE t." + c.getDbColumn() + " END");
+        }
+        if (c.isNullGuard()) {
+            return Optional.of(c.getDbColumn() + " = COALESCE(:" + c.getJsonName()
+                    + ", t." + c.getDbColumn() + ")");
+        }
+        return Optional.of(c.getDbColumn() + " = :" + c.getJsonName());
+    }
+
+    private List<String> buildInsertCols(TableMetadata t) {
+        List<String> cols = new ArrayList<>();
+        for (ColumnMetadata c : t.getColumns()) {
+            if (c.isReadOnly() && !c.isAudit()) continue;
+            cols.add(c.getDbColumn());
+        }
+        return cols;
+    }
+
+    private List<String> buildInsertValues(TableMetadata t) {
+        List<String> values = new ArrayList<>();
+        for (ColumnMetadata c : t.getColumns()) {
+            if (c.isReadOnly() && !c.isAudit()) continue;
+            // All audit columns (CRTE_TS, UPDT_TS, RPLCTN_UPDT_TS, ...) use SYSTIMESTAMP on insert
+            values.add(c.isAudit() ? "SYSTIMESTAMP" : ":" + c.getJsonName());
+        }
+        return values;
+    }
+
     private String doBuildSelectByPk(TableMetadata t) {
-        return "SELECT " + columnList(t) + " FROM " + t.qualifiedName()
-                + " WHERE " + t.getPk() + " = :" + t.pkColumn().getJsonName();
+        return SQL_SELECT + columnList(t) + SQL_FROM + t.qualifiedName()
+                + SQL_WHERE + t.getPk() + " = :" + t.pkColumn().getJsonName();
     }
 
     private String doBuildSelectByFk(TableMetadata t, String fkCol) {
-        return "SELECT " + columnList(t) + " FROM " + t.qualifiedName()
-                + " WHERE " + fkCol + " = :fkValue";
+        return SQL_SELECT + columnList(t) + SQL_FROM + t.qualifiedName()
+                + SQL_WHERE + fkCol + " = :fkValue";
     }
 
     private String doBuildSelectPage(TableMetadata t) {
         String orderBy = (t.getDefaultOrderBy() == null || t.getDefaultOrderBy().isBlank())
                 ? t.getPk()
                 : t.getDefaultOrderBy();
-        return "SELECT " + columnList(t)
-                + " FROM " + t.qualifiedName()
+        return SQL_SELECT + columnList(t)
+                + SQL_FROM + t.qualifiedName()
                 + " ORDER BY " + orderBy
                 + " OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY";
     }

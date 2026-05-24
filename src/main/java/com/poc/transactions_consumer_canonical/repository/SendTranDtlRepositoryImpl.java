@@ -17,6 +17,8 @@ import java.util.Optional;
 @RequiredArgsConstructor
 public class SendTranDtlRepositoryImpl implements SendTranDtlRepository {
 
+    private static final String TRAN_ID_PARAM = "tranId";
+
     private final NamedParameterJdbcTemplate jdbc;
     private final SendTranDtlRowMapper rowMapper;
     private final SqlQueries sqlQueries;
@@ -33,20 +35,20 @@ public class SendTranDtlRepositoryImpl implements SendTranDtlRepository {
         try {
             return Optional.ofNullable(
                     jdbc.queryForObject(sqlQueries.sendTranDtlSelectByTranId(),
-                            new MapSqlParameterSource("tranId", tranId), rowMapper));
-        } catch (EmptyResultDataAccessException e) {
+                            new MapSqlParameterSource(TRAN_ID_PARAM, tranId), rowMapper));
+        } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
     }
 
     @Override
     public void deleteByTranId(String tranId) {
-        jdbc.update(sqlQueries.sendTranDtlDelete(), new MapSqlParameterSource("tranId", tranId));
+        jdbc.update(sqlQueries.sendTranDtlDelete(), new MapSqlParameterSource(TRAN_ID_PARAM, tranId));
     }
 
     private MapSqlParameterSource toParams(SendTranDtl d) {
         return new MapSqlParameterSource()
-                .addValue("tranId",               d.getTranId(),              Types.VARCHAR)
+                .addValue(TRAN_ID_PARAM,          d.getTranId(),              Types.VARCHAR)
                 .addValue("paymtRef",              d.getPaymtRef(),            Types.VARCHAR)
                 .addValue("unqTranRef",            d.getUnqTranRef(),          Types.VARCHAR)
                 .addValue("acqCntryNam",           d.getAcqCntryNam(),         Types.VARCHAR)

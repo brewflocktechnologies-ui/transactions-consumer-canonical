@@ -3,6 +3,7 @@ package com.poc.transactions_consumer_canonical.repository;
 import com.poc.transactions_consumer_canonical.metadata.ColumnMetadata;
 import com.poc.transactions_consumer_canonical.metadata.TableMetadata;
 import org.springframework.jdbc.core.RowMapper;
+import org.springframework.lang.Nullable;
 
 import java.sql.Date;
 import java.sql.ResultSet;
@@ -31,6 +32,8 @@ public class GenericRowMapper implements RowMapper<Map<String, Object>> {
     }
 
     @Override
+    @Nullable
+    @SuppressWarnings("java:S2638") // RowMapper.mapRow is declared @Nullable in the interface — override is contract-compatible
     public Map<String, Object> mapRow(ResultSet rs, int rowNum) throws SQLException {
         Map<String, Object> row = new LinkedHashMap<>(table.getColumns().size());
         for (ColumnMetadata col : table.getColumns()) {
@@ -44,9 +47,13 @@ public class GenericRowMapper implements RowMapper<Map<String, Object>> {
         return row;
     }
 
+    @Nullable
     private Object readRaw(ResultSet rs, ColumnMetadata col) throws SQLException {
-        String type = col.getSqlType().toUpperCase(Locale.ROOT);
+        String type = col.getSqlType() == null ? "" : col.getSqlType().toUpperCase(Locale.ROOT);
         String dbCol = col.getDbColumn();
+        if (dbCol == null || dbCol.isBlank()) {
+            return null;
+        }
         return switch (type) {
             case "VARCHAR", "CLOB" -> rs.getString(dbCol);
             case "NUMERIC"          -> rs.getBigDecimal(dbCol);

@@ -20,6 +20,9 @@ import java.util.stream.Collectors;
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
+    private static final String TRACE_ID_KEY      = "traceId";
+    private static final String VALIDATION_FAILED = "Validation Failed";
+
     @ExceptionHandler(ResourceNotFoundException.class)
     public ResponseEntity<ErrorResponse> handleNotFound(ResourceNotFoundException ex) {
         log.warn("Resource not found: {}", ex.getMessage());
@@ -29,7 +32,7 @@ public class GlobalExceptionHandler {
                         .error("Not Found")
                         .message(ex.getMessage())
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .build()
         );
     }
@@ -47,10 +50,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse.builder()
                         .status(HttpStatus.BAD_REQUEST.value())
-                        .error("Validation Failed")
+                        .error(VALIDATION_FAILED)
                         .message("One or more fields are invalid")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .fieldErrors(fieldErrors)
                         .build()
         );
@@ -69,10 +72,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse.builder()
                         .status(HttpStatus.BAD_REQUEST.value())
-                        .error("Validation Failed")
+                        .error(VALIDATION_FAILED)
                         .message("One or more request parameters are invalid")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .fieldErrors(fieldErrors)
                         .build()
         );
@@ -88,10 +91,10 @@ public class GlobalExceptionHandler {
         return ResponseEntity.status(HttpStatus.BAD_REQUEST).body(
                 ErrorResponse.builder()
                         .status(HttpStatus.BAD_REQUEST.value())
-                        .error("Validation Failed")
+                        .error(VALIDATION_FAILED)
                         .message("One or more fields are invalid")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .fieldErrors(ex.getFieldErrors())
                         .build()
         );
@@ -111,7 +114,7 @@ public class GlobalExceptionHandler {
                         .error("Database Error")
                         .message("A database error occurred. Please try again or contact support.")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .build()
         );
     }
@@ -129,7 +132,7 @@ public class GlobalExceptionHandler {
                         .error("Internal Server Error")
                         .message("An unexpected error occurred. Please try again or contact support.")
                         .timestamp(OffsetDateTime.now(ZoneOffset.UTC))
-                        .traceId(MDC.get("traceId"))
+                        .traceId(MDC.get(TRACE_ID_KEY))
                         .build()
         );
     }

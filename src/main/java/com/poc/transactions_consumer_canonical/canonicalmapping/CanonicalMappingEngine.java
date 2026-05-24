@@ -145,8 +145,7 @@ public class CanonicalMappingEngine {
         for (FieldMapping fm : mappings) {
             try {
                 Object value = safeRead(source, fm.getSource());
-                if (value == null) continue;
-                String str = value.toString().trim();
+                String str = value == null ? "" : value.toString().trim();
                 if (str.isEmpty()) continue;
 
                 boolean written = writeField(target, fm.getTarget(), value);
@@ -164,12 +163,12 @@ public class CanonicalMappingEngine {
         try {
             String getter = "get" + capitalize(fieldName);
             return source.getClass().getMethod(getter).invoke(source);
-        } catch (NoSuchMethodException e) {
+        } catch (NoSuchMethodException _) {
             // try boolean-style "is" prefix for primitive booleans
             try {
                 String getter = "is" + capitalize(fieldName);
                 return source.getClass().getMethod(getter).invoke(source);
-            } catch (Exception ex) {
+            } catch (Exception _) {
                 log.debug("[ENGINE] No getter for source field '{}' on {}", fieldName,
                         source.getClass().getSimpleName());
                 return null;
