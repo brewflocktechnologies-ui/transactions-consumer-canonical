@@ -331,10 +331,10 @@
     },
     {
       "name": "Kafka Publish",
-      "description": "Publishes a raw JSON message to the Kafka topic via POST /api/publish.\nThe controller hands the body straight to KafkaCanonicalProducer, which sends it to the 'transactions-group' topic.\nThe consumer then picks it up and logs the received message.",
+      "description": "Publishes an EventEnvelope to the Kafka topic via POST /api/publish.\n\nStructure:\n  EventEnvelope          — outer wrapper (validated: all fields @NotBlank / eventTimestamp @Positive)\n    └─ eventPayload      — JSON-string of TransactionEventAxonMessage\n\nThe consumer deserialises both layers and logs every key field.\nReturns 202 Accepted on success; 400 Bad Request when @Valid fails.",
       "item": [
         {
-          "name": "K1. Publish - Minimal Transaction",
+          "name": "K1. Publish - Minimal EventEnvelope (core fields only)",
           "request": {
             "method": "POST",
             "header": [
@@ -343,18 +343,18 @@
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"tranId\": \"TXN-KAFKA-001\",\n  \"tranType\": \"SEND\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 500.00,\n  \"tranCurr\": \"USD\",\n  \"crteUserNam\": \"sysuser\"\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_INITIATED\",\n  \"eventId\": \"EVT-001\",\n  \"correlationId\": \"CORL-XYZ-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-001\\\",\\\"tranAmt\\\":\\\"500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"PENDING\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\"}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/publish",
               "host": ["{{baseUrl}}"],
               "path": ["api", "publish"]
             },
-            "description": "Publishes a minimal transaction JSON to the Kafka topic. Returns 202 Accepted with body 'Message received successfully'."
+            "description": "Minimal valid EventEnvelope. eventPayload carries a lightweight TransactionEventAxonMessage.\n\nExpect in server logs:\n  [PRODUCER]  Serialising EventEnvelope | eventId=EVT-001\n  [CONSUMER]  EventEnvelope  → all envelope fields\n  [CONSUMER]  TransactionEventAxonMessage → tranId, tranAmt, status, sndr/rcvr names etc."
           }
         },
         {
-          "name": "K2. Publish - Full Transaction Payload",
+          "name": "K2. Publish - Full EventEnvelope (rich transaction payload)",
           "request": {
             "method": "POST",
             "header": [
@@ -363,18 +363,18 @@
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"tranId\": \"TXN-KAFKA-002\",\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"COMPLETED\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"ntwrkRespCd\": \"00\",\n  \"ntwrkRespCdDesc\": \"Approved\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"refId\": \"REF-2024-ABC\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_COMPLETED\",\n  \"eventId\": \"EVT-002\",\n  \"correlationId\": \"CORL-XYZ-002\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\",\\\"priority\\\":\\\"HIGH\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-002\\\",\\\"tranAmt\\\":\\\"2750.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"COMPLETED\\\",\\\"networkCode\\\":\\\"MASTERCARD\\\",\\\"networkResponseCode\\\":\\\"00\\\",\\\"networkResponseCodeDesc\\\":\\\"Approved\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrMiddleName\\\":\\\"A\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"sndrEmailAddr\\\":\\\"john.smith@example.com\\\",\\\"sndrPhoneNum\\\":\\\"+12125550101\\\",\\\"sndrAddrLine1\\\":\\\"123 Main St\\\",\\\"sndrCityName\\\":\\\"New York\\\",\\\"sndrCountryCd\\\":\\\"US\\\",\\\"sndrPostalCd\\\":\\\"10001\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"rcvrEmailAddr\\\":\\\"jane.doe@example.com\\\",\\\"rcvrPhoneNum\\\":\\\"+14155550199\\\",\\\"rcvrAddrLine1\\\":\\\"456 Reforma Ave\\\",\\\"rcvrCity\\\":\\\"Mexico City\\\",\\\"rcvrCountryCd\\\":\\\"MX\\\",\\\"rcvrPostalCd\\\":\\\"06600\\\",\\\"originatingInstId\\\":\\\"BANK-US-001\\\",\\\"originatingInstName\\\":\\\"First National Bank\\\",\\\"originatingCountry\\\":\\\"US\\\",\\\"paymentStatus\\\":\\\"COMPLETED\\\",\\\"paymentAmt\\\":\\\"2750.00\\\",\\\"paymentCurrCd\\\":\\\"USD\\\",\\\"fundingStatus\\\":\\\"SETTLED\\\",\\\"fundingAmt\\\":\\\"2750.00\\\",\\\"fundingSource\\\":\\\"CHECKING\\\",\\\"channel\\\":\\\"API\\\",\\\"brand\\\":\\\"MASTERCARD\\\",\\\"correlationId\\\":\\\"CORL-XYZ-002\\\",\\\"nonFinTxn\\\":0}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/publish",
               "host": ["{{baseUrl}}"],
               "path": ["api", "publish"]
             },
-            "description": "Publishes a full transaction payload to Kafka. Check server logs for the [PRODUCER] and [CONSUMER] log lines confirming the round-trip."
+            "description": "Full EventEnvelope with a rich TransactionEventAxonMessage payload covering sender, receiver, network, payment leg, funding leg, and institution fields.\n\nCheck logs for the complete [CONSUMER] output printing all mapped fields."
           }
         },
         {
-          "name": "K3. Publish - Status Update Event",
+          "name": "K3. Publish - Status Update Event (FAILED)",
           "request": {
             "method": "POST",
             "header": [
@@ -383,18 +383,18 @@
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{\n  \"tranId\": \"TXN-KAFKA-001\",\n  \"curStat\": \"FAILED\",\n  \"errCd\": \"ERR-5001\",\n  \"errCdDesc\": \"Insufficient funds\",\n  \"ntwrkRespCd\": \"51\",\n  \"updtUserNam\": \"sysuser\"\n}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_FAILED\",\n  \"eventId\": \"EVT-003\",\n  \"correlationId\": \"CORL-XYZ-001\",\n  \"eventTimestamp\": 1731661200000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-001\\\",\\\"tranAmt\\\":\\\"500.00\\\",\\\"tranAmtCurr\\\":\\\"USD\\\",\\\"status\\\":\\\"FAILED\\\",\\\"networkResponseCode\\\":\\\"51\\\",\\\"networkResponseCodeDesc\\\":\\\"Insufficient funds\\\",\\\"errorCd\\\":\\\"ERR-5001\\\",\\\"errorCdDesc\\\":\\\"Insufficient funds\\\",\\\"sndrFirstName\\\":\\\"John\\\",\\\"sndrLastName\\\":\\\"Smith\\\",\\\"rcvrFirstName\\\":\\\"Jane\\\",\\\"rcvrLastName\\\":\\\"Doe\\\",\\\"paymentStatus\\\":\\\"FAILED\\\",\\\"fundingStatus\\\":\\\"NOT_SETTLED\\\"}\"\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/publish",
               "host": ["{{baseUrl}}"],
               "path": ["api", "publish"]
             },
-            "description": "Publishes a status-change event for an existing transaction (curStat=FAILED). Simulates a downstream status update being streamed through Kafka."
+            "description": "Publishes a TRANSACTION_FAILED event for TXN-KAFKA-001. Consumer will log status=FAILED, error code ERR-5001, and network response 51/Insufficient funds."
           }
         },
         {
-          "name": "K4. Publish - Empty Body (edge case)",
+          "name": "K4. Publish - ignore=true (skipped by consumer)",
           "request": {
             "method": "POST",
             "header": [
@@ -403,14 +403,34 @@
             "body": {
               "mode": "raw",
               "options": { "raw": { "language": "json" } },
-              "raw": "{}"
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\",\n  \"eventName\": \"TRANSACTION_INITIATED\",\n  \"eventId\": \"EVT-004\",\n  \"correlationId\": \"CORL-XYZ-004\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"version\\\":\\\"1.0\\\",\\\"env\\\":\\\"dev\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-KAFKA-004\\\",\\\"status\\\":\\\"PENDING\\\"}\",\n  \"ignore\": true\n}"
             },
             "url": {
               "raw": "{{baseUrl}}/api/publish",
               "host": ["{{baseUrl}}"],
               "path": ["api", "publish"]
             },
-            "description": "Sends an empty JSON object. The controller accepts any string body — the consumer will log it. Useful for testing that the pipeline is alive without requiring a valid transaction payload."
+            "description": "Envelope with ignore=true. The producer sends it normally (202 returned), but the consumer detects the flag and logs 'Envelope flagged ignore=true — skipping payload processing' without deserialising the inner payload."
+          }
+        },
+        {
+          "name": "K5. Publish - 400 Validation failure (missing required fields)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AXON-GATEWAY\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "publish"]
+            },
+            "description": "Intentionally omits eventName, eventId, correlationId, eventMetadata, eventPayload (all @NotBlank) and eventTimestamp (@Positive defaults to 0). Expects 400 Bad Request with validation error details."
           }
         }
       ]
