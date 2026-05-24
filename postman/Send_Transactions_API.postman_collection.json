@@ -330,6 +330,92 @@
       ]
     },
     {
+      "name": "Kafka Publish",
+      "description": "Publishes a raw JSON message to the Kafka topic via POST /api/publish.\nThe controller hands the body straight to KafkaCanonicalProducer, which sends it to the 'transactions-group' topic.\nThe consumer then picks it up and logs the received message.",
+      "item": [
+        {
+          "name": "K1. Publish - Minimal Transaction",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranId\": \"TXN-KAFKA-001\",\n  \"tranType\": \"SEND\",\n  \"curStat\": \"PENDING\",\n  \"tranAmt\": 500.00,\n  \"tranCurr\": \"USD\",\n  \"crteUserNam\": \"sysuser\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "publish"]
+            },
+            "description": "Publishes a minimal transaction JSON to the Kafka topic. Returns 202 Accepted with body 'Message received successfully'."
+          }
+        },
+        {
+          "name": "K2. Publish - Full Transaction Payload",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranId\": \"TXN-KAFKA-002\",\n  \"tranType\": \"SEND\",\n  \"tranCrteDt\": \"2024-11-15T09:30:00\",\n  \"curStat\": \"COMPLETED\",\n  \"origStat\": \"INITIATED\",\n  \"tranAmt\": 2750.00,\n  \"tranCurr\": \"USD\",\n  \"sendAcct\": \"ACC-001234\",\n  \"recipAcct\": \"ACC-005678\",\n  \"ntwrkCd\": \"MASTERCARD\",\n  \"ntwrkRespCd\": \"00\",\n  \"ntwrkRespCdDesc\": \"Approved\",\n  \"origInstId\": \"BANK-US-001\",\n  \"origInstNam\": \"First National Bank\",\n  \"corltnId\": \"CORL-XYZ-999\",\n  \"refId\": \"REF-2024-ABC\",\n  \"crteUserNam\": \"sysuser\",\n  \"updtUserNam\": \"sysuser\",\n  \"nonFinTxn\": false\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "publish"]
+            },
+            "description": "Publishes a full transaction payload to Kafka. Check server logs for the [PRODUCER] and [CONSUMER] log lines confirming the round-trip."
+          }
+        },
+        {
+          "name": "K3. Publish - Status Update Event",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"tranId\": \"TXN-KAFKA-001\",\n  \"curStat\": \"FAILED\",\n  \"errCd\": \"ERR-5001\",\n  \"errCdDesc\": \"Insufficient funds\",\n  \"ntwrkRespCd\": \"51\",\n  \"updtUserNam\": \"sysuser\"\n}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "publish"]
+            },
+            "description": "Publishes a status-change event for an existing transaction (curStat=FAILED). Simulates a downstream status update being streamed through Kafka."
+          }
+        },
+        {
+          "name": "K4. Publish - Empty Body (edge case)",
+          "request": {
+            "method": "POST",
+            "header": [
+              { "key": "Content-Type", "value": "application/json" }
+            ],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{}"
+            },
+            "url": {
+              "raw": "{{baseUrl}}/api/publish",
+              "host": ["{{baseUrl}}"],
+              "path": ["api", "publish"]
+            },
+            "description": "Sends an empty JSON object. The controller accepts any string body — the consumer will log it. Useful for testing that the pipeline is alive without requiring a valid transaction payload."
+          }
+        }
+      ]
+    },
+    {
       "name": "Metadata-Driven (v2) API",
       "description": "Tests for the new generic, YAML-metadata-driven endpoints at /api/v2/*.\n\nThe routes are:\n  PUT    /api/v2/{alias}/{id}    upsert (parent + children if alias is a root table)\n  GET    /api/v2/{alias}/{id}    fetch with nested children\n  GET    /api/v2/{alias}         paginated parent rows (no children)\n  DELETE /api/v2/{alias}/{id}    cascade-delete\n  GET    /api/v2/_metadata       list all loaded tables\n  GET    /api/v2/_metadata/{alias}   describe one table\n\nAliases come from the YAML files under src/main/resources/metadata/:\n  send-transactions  send-tran-dtl  send-recip-dtl  send-tran-addr-dtl\n\nAdding a new column = one line in YAML + DDL change. No Java changes.",
       "item": [

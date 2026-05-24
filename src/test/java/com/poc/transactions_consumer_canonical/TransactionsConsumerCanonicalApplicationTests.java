@@ -14,9 +14,10 @@ import org.springframework.test.context.ActiveProfiles;
  *       OpenApiConfig, CorsConfig all wire up</li>
  *   <li>No circular dependencies, no duplicate bean names</li>
  * </ul>
- * Runs against H2 (Oracle-mode) with Flyway and Kafka disabled — see
- * {@code src/test/resources/application-test.properties}. Real DB
- * behaviour must be validated against Oracle XE separately.
+ * Runs against H2 (Oracle-mode) with Flyway disabled and Kafka in no-op mode
+ * (fake bootstrap server + auto-startup=false) — see
+ * {@code src/test/resources/application-test.properties}. Real DB and broker
+ * behaviour must be validated against Oracle XE / Kafka separately.
  */
 @SpringBootTest
 @ActiveProfiles("test")
