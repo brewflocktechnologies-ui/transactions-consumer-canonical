@@ -5,6 +5,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingEngine;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingRegistry;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalRuleEngine;
+import com.poc.transactions_consumer_canonical.canonicalmapping.EventPayloadSanitizer;
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventTypeMapping;
 import com.poc.transactions_consumer_canonical.config.KafkaTopicConfig;
 import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
@@ -26,14 +27,14 @@ import java.util.Optional;
  *  2. Check envelope.ignore flag     (set upstream; skip if true)
  *  3. Route by eventName             →  EventTypeMapping  (YAML-driven)
  *  4. Evaluate rules                 →  allowedEventSources / allowedOperations
- *  5. Deserialise eventPayload       →  TransactionEventAxonMessage
- *  6. CanonicalMappingEngine.map()   →  SendTransactionRequest
- *  7. SendTransactionService.upsert()→  Oracle DB
+ *  5. Validate &amp; sanitize payload   →  rectify common JSON issues or skip
+ *  6. Deserialise eventPayload       →  TransactionEventAxonMessage
+ *  7. CanonicalMappingEngine.map()   →  SendTransactionRequest
+ *  8. SendTransactionService.upsert()→  Oracle DB
  * </pre>
  *
- * <p>Rule evaluation (step 4) is intentionally placed <em>before</em> payload
- * deserialisation (step 5) so that filtered-out messages never incur the cost
- * of parsing the larger {@code eventPayload} JSON.
+ * <p>Steps 3–5 all run <em>before</em> full payload deserialization so that
+ * unroutable, rule-blocked, or malformed messages are discarded with minimal cost.
  */
 @Component
 @RequiredArgsConstructor
@@ -43,6 +44,7 @@ public class KafkaCanonicalConsumer {
     private final ObjectMapper              objectMapper;
     private final CanonicalMappingRegistry  mappingRegistry;
     private final CanonicalRuleEngine       ruleEngine;
+    private final EventPayloadSanitizer     payloadSanitizer;
     private final CanonicalMappingEngine    mappingEngine;
     private final SendTransactionService    sendTransactionService;
 
@@ -91,20 +93,33 @@ public class KafkaCanonicalConsumer {
             return;
         }
 
-        // ── Step 5: deserialise TransactionEventAxonMessage (payload) ─────────
+        // ── Step 5: validate & sanitize eventPayload ─────────────────────────
+        // Attempts four progressive rectification strategies (trim → unwrap →
+        // lenient re-parse). Returns empty if the payload is irrecoverable.
+        Optional<String> sanitized = payloadSanitizer.sanitize(envelope.getEventPayload());
+        if (sanitized.isEmpty()) {
+            log.warn("[CONSUMER]  eventPayload is invalid and cannot be rectified — skipping | "
+                    + "eventType={} eventName={}", mapping.getEventType(), envelope.getEventName());
+            log.info("===============================================");
+            return;
+        }
+        // Apply the (potentially rectified) payload back — no-op when unchanged
+        envelope.setEventPayload(sanitized.get());
+
+        // ── Step 6: deserialise TransactionEventAxonMessage (payload) ─────────
         TransactionEventAxonMessage txn = deserialisePayload(envelope);
         if (txn == null) return;
 
         logTransaction(txn);
 
-        // ── Step 6: apply field mappings → canonical SendTransactionRequest ───
+        // ── Step 7: apply field mappings → canonical SendTransactionRequest ───
         String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
         SendTransactionRequest canonicalReq = mappingEngine.map(mapping, txn, envelope);
 
         log.info("[CONSUMER]  Canonical request built | tranId={} tranType={} curStat={} tranAmt={}",
                 tranId, canonicalReq.getTranType(), canonicalReq.getCurStat(), canonicalReq.getTranAmt());
 
-        // ── Step 7: persist to Oracle DB ─────────────────────────────────────
+        // ── Step 8: persist to Oracle DB ─────────────────────────────────────
         try {
             sendTransactionService.upsert(tranId, canonicalReq);
             log.info("[CONSUMER]  Saved to DB successfully | tranId={} eventType={}",
@@ -130,14 +145,9 @@ public class KafkaCanonicalConsumer {
     }
 
     private TransactionEventAxonMessage deserialisePayload(EventEnvelope envelope) {
-        String rawPayload = envelope.getEventPayload();
-        if (rawPayload == null || rawPayload.isBlank()) {
-            log.warn("[CONSUMER]  eventPayload is empty — nothing to process");
-            log.info("===============================================");
-            return null;
-        }
         try {
-            return objectMapper.readValue(rawPayload, TransactionEventAxonMessage.class);
+            return objectMapper.readValue(envelope.getEventPayload(),
+                    TransactionEventAxonMessage.class);
         } catch (JsonProcessingException e) {
             log.error("[CONSUMER]  Failed to deserialise TransactionEventAxonMessage: {}",
                     e.getMessage());

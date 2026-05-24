@@ -472,6 +472,34 @@
             "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
             "description": "eventSource=AIS_SERVICE passes Rule 1. But operation=D is NOT in PAYMENT.yaml allowedOperations=[A, U].\n\nRule engine fires at Step 4, Rule 2.\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=PAYMENT\n  [RULE ENGINE] IGNORED | rule=operation | value='D' | allowed=[A, U]\n  [CONSUMER]  Message blocked by rule engine\n\nNo DB write. Compare with FUNDING.yaml which DOES allow operation=D."
           }
+        },
+        {
+          "name": "K11. RECTIFIED — malformed payload fixed and saved to DB",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-SAN-001\",\n  \"correlationId\": \"CORL-SAN-001\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:30:00Z\\\"}\",\n  \"eventPayload\": \"  {  'tranId' : 'TXN-SAN-001',  'tranAmt' : '250.00',  'tranAmtCurr' : 'USD',  'status' : 'PENDING',  'networkCode' : 'VISA',  'sndrFirstName' : 'Alice',  'sndrLastName' : 'Walker',  'rcvrFirstName' : 'Bob',  'rcvrLastName' : 'Green',  }  \"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventPayload uses single quotes and has a trailing comma — both are not valid in strict JSON.\n\nSanitizer fires at Step 5:\n  Attempt 1 (as-is)      → FAIL  (not valid strict JSON)\n  Attempt 2 (trim)       → FAIL  (still invalid)\n  Attempt 3 (unwrap)     → FAIL  (doesn't start with '\"')\n  Attempt 4 (lenient)    → PASS  → re-emits strict RFC-8259 JSON\n\nExpect logs:\n  [SANITIZER] eventPayload is not valid JSON — starting rectification attempts\n  [SANITIZER] Rectified ✓ | strategy=LENIENT_RESERIALIZE\n  [CONSUMER]  Canonical request built | tranId=TXN-SAN-001\n  [CONSUMER]  Saved to DB successfully"
+          }
+        },
+        {
+          "name": "K12. IRRECOVERABLE — truly invalid payload, message skipped",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"AIS_SERVICE\",\n  \"eventName\": \"PAYMENT_INITIATED\",\n  \"eventId\": \"EVT-SAN-002\",\n  \"correlationId\": \"CORL-SAN-002\",\n  \"eventTimestamp\": 1731660600000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:30:00Z\\\"}\",\n  \"eventPayload\": \"THIS IS NOT JSON AT ALL *** CORRUPT PAYLOAD ***\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventPayload is plain text — no rectification strategy can recover it.\n\nSanitizer fires at Step 5:\n  Attempt 1 (as-is)      → FAIL\n  Attempt 2 (trim)       → FAIL\n  Attempt 3 (unwrap)     → FAIL  (doesn't start with '\"')\n  Attempt 4 (lenient)    → FAIL  (not parseable even leniently)\n\nExpect logs:\n  [SANITIZER] eventPayload is not valid JSON — starting rectification attempts\n  [SANITIZER] eventPayload is irrecoverable — message will be skipped. Preview: THIS IS NOT JSON...\n  [CONSUMER]  eventPayload is invalid and cannot be rectified — skipping\n\nNo DB write. Returns 202 to the publisher (Kafka is fire-and-forget)."
+          }
         }
       ]
     },
