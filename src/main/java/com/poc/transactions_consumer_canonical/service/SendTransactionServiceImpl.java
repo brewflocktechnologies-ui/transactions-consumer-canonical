@@ -180,6 +180,7 @@ public class SendTransactionServiceImpl implements SendTransactionService {
                 .acctHoldNam(r.getAcctHoldNam())
                 .errCdDesc(r.getErrCdDesc())
                 .nonFinTxn(r.getNonFinTxn())
+                .recipElig(r.getRecipElig())
                 .ntwrkRespCdDesc(r.getNtwrkRespCdDesc())
                 .build();
     }
@@ -345,6 +346,7 @@ public class SendTransactionServiceImpl implements SendTransactionService {
                 .acctHoldNam(p.getAcctHoldNam())
                 .errCdDesc(p.getErrCdDesc())
                 .nonFinTxn(p.getNonFinTxn())
+                .recipElig(p.getRecipElig())
                 .ntwrkRespCdDesc(p.getNtwrkRespCdDesc())
                 .tranDtl(dtl != null ? toDtlResponse(dtl) : null)
                 .recipDtl(recip != null ? toRecipResponse(recip) : null)

@@ -63,6 +63,7 @@ columns:
   # ── Boolean stored as NUMBER(1,0) ──────────────────────────────────
   # null in payload → COALESCE preserves DB; true/false → 1/0
   - { jsonName: nonFinTxn,         dbColumn: NON_FIN_TXN,        sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
+  - { jsonName: recipElig,         dbColumn: RECIP_ELIG,         sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
 
   - { jsonName: ntwrkRespCdDesc,   dbColumn: NTWRK_RESP_CD_DESC, sqlType: VARCHAR,   maxLength: 500 }
 

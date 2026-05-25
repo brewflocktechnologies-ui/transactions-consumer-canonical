@@ -129,6 +129,14 @@ public class SendTransactionRequest {
      */
     private Boolean nonFinTxn;
 
+    /**
+     * Recipient (account) eligibility flag.
+     * null  → leave the existing RECIP_ELIG value untouched (COALESCE guard applied in MERGE).
+     * true  → set RECIP_ELIG = 1.
+     * false → set RECIP_ELIG = 0.
+     */
+    private Boolean recipElig;
+
     @Size(max = 500)
     private String ntwrkRespCdDesc;
 

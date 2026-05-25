@@ -159,18 +159,36 @@ public class CanonicalMappingEngine {
 
     // ── Reflection helpers ────────────────────────────────────────────────────
 
-    private Object safeRead(TransactionEventAxonMessage source, String fieldName) {
+    /**
+     * Reads {@code path} from {@code source}, traversing nested objects via
+     * dot notation. For example {@code "sendingAccountEligible.eligible"}
+     * is resolved as {@code source.getSendingAccountEligible().getEligible()}.
+     * Each segment supports both {@code getXxx()} and {@code isXxx()} accessors.
+     * Returns {@code null} at the first null segment or unresolvable getter.
+     */
+    private Object safeRead(Object source, String path) {
+        if (source == null || path == null || path.isBlank()) return null;
+
+        Object current = source;
+        for (String segment : path.split("\\.")) {
+            if (current == null) return null;
+            current = readSingle(current, segment);
+        }
+        return current;
+    }
+
+    private Object readSingle(Object target, String fieldName) {
         try {
             String getter = "get" + capitalize(fieldName);
-            return source.getClass().getMethod(getter).invoke(source);
+            return target.getClass().getMethod(getter).invoke(target);
         } catch (NoSuchMethodException _) {
             // try boolean-style "is" prefix for primitive booleans
             try {
                 String getter = "is" + capitalize(fieldName);
-                return source.getClass().getMethod(getter).invoke(source);
+                return target.getClass().getMethod(getter).invoke(target);
             } catch (Exception _) {
                 log.debug("[ENGINE] No getter for source field '{}' on {}", fieldName,
-                        source.getClass().getSimpleName());
+                        target.getClass().getSimpleName());
                 return null;
             }
         } catch (Exception e) {

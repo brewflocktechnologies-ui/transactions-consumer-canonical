@@ -56,6 +56,7 @@ public class SendTransactionResponse {
     private String acctHoldNam;
     private String errCdDesc;
     private Boolean nonFinTxn;
+    private Boolean recipElig;
     private String ntwrkRespCdDesc;
 
     // ── Child 1:1 : SEND_TRAN_DTL ────────────────────────────

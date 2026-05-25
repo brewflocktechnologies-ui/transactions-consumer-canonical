@@ -473,6 +473,19 @@ public class TransactionEventAxonMessage {
     private int nonFinTxn;
 
     // =====================================================
+    // AIS — ACCOUNT INFORMATION SERVICE
+    // Nested blocks carried under sendingAccountEligible /
+    // receivingAccountEligible. Reachable from YAML via dot
+    // notation (e.g. "sendingAccountEligible.eligible").
+    // =====================================================
+    private String partnerName;
+    private String currency;
+    private String transactionType;
+    private String network;
+    private AccountEligibility sendingAccountEligible;
+    private AccountEligibility receivingAccountEligible;
+
+    // =====================================================
     // UK FPS
     // =====================================================
     private String ukfpsAddrUuid;

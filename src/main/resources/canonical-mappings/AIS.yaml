@@ -1,0 +1,74 @@
+# =============================================================================
+# Canonical mapping: AIS (Account Information Service) event type
+#
+# TransactionEventAxonMessage  →  SendTransactionRequest (canonical object)
+#
+# Nested-field support:
+#   `source:` accepts dot-notation paths to traverse nested JSON blocks
+#   (e.g. `sendingAccountEligible.eligible` → `getSendingAccountEligible().getEligible()`).
+#   Each path segment must have a corresponding getter on the source object.
+# =============================================================================
+
+eventType: AIS
+tranIdSource: accountInformationId   # TxnAxonMessage field used as DB TRAN_ID (falls back to correlationId)
+tranType: AIS                        # literal value for SendTransactionRequest.tranType
+
+# ---------------------------------------------------------------------------
+# Filtering rules — both checks must pass for the message to be processed.
+# ---------------------------------------------------------------------------
+rules:
+  allowedEventSources:
+    - SEND_COMMON_SERVICES
+    - AIS_SERVICE
+
+  # A = Add / Insert   U = Update   D = Delete
+  allowedOperations:
+    - A
+    - U
+
+eventNames:
+  - AIS
+
+# ---------------------------------------------------------------------------
+# Parent: SendTransactionRequest top-level fields
+# ---------------------------------------------------------------------------
+parent:
+  # Core identifiers
+  - { source: correlationId,                       target: corltnId }
+  - { source: accountInformationId,                target: tranInitId }
+  - { source: referenceId,                         target: refId }
+
+  # Partner / institution
+  - { source: partnerId,                           target: origInstId }
+  - { source: partnerName,                         target: origInstNam }
+
+  # Amount / currency
+  - { source: amount,                              target: tranAmt }
+  - { source: currency,                            target: tranCurr }
+
+  # Account / card
+  - { source: accountUri,                          target: sendAcct }
+  - { source: accountType,                         target: acctType }
+
+  # Eligibility (nested) — sending account eligibility maps to RECIP_ELIG per spec
+  - { source: sendingAccountEligible.eligible,     target: recipElig }
+  - { source: sendingAccountEligible.responseReasonCode,   target: errCd }
+  - { source: sendingAccountEligible.responseReasonDetail, target: errCdDesc }
+
+  # Network / brand
+  - { source: network,                             target: ntwrkCd }
+
+  # Funds / status
+  - { source: fundsAvailability,                   target: fundAvail }
+
+  # Use-case / payment type
+  - { source: paymentType,                         target: useCase }
+
+# ---------------------------------------------------------------------------
+# tranDtl: SendTranDtlRequest  (1:1 child)
+# ---------------------------------------------------------------------------
+tranDtl:
+  - { source: paymentType,                         target: paymtType }
+  - { source: referenceId,                         target: paymtRef }
+  - { source: originalRequestPayload,              target: origRqstPyld }
+  - { source: originalResponsePayload,             target: origRespPyld }

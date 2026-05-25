@@ -13,20 +13,8 @@ public class SqlQueries {
     @Value("${app.db.schema:SEND_TXN_OWNER}")
     private String schemaOwner;
 
-    @Value("${sql.send-transactions.upsert}")
-    private String sendTransactionsUpsert;
-
-    @Value("${sql.send-transactions.select-by-id}")
-    private String sendTransactionsSelectById;
-
-    @Value("${sql.send-transactions.select-page}")
-    private String sendTransactionsSelectPage;
-
-    @Value("${sql.send-transactions.count}")
-    private String sendTransactionsCount;
-
-    @Value("${sql.send-transactions.delete}")
-    private String sendTransactionsDelete;
+    // NOTE: SEND_TRANSACTIONS SQL is fully metadata-driven (see SendTransactionRepositoryImpl
+    // + SqlBuilder). No static properties needed here for that table.
 
     @Value("${sql.send-tran-dtl.upsert}")
     private String sendTranDtlUpsert;
@@ -57,26 +45,6 @@ public class SqlQueries {
 
     @Value("${sql.send-tran-addr-dtl.delete-by-tran-id-not-in}")
     private String sendTranAddrDtlDeleteByTranIdNotIn;
-
-    public String sendTransactionsUpsert() {
-        return withSchema(sendTransactionsUpsert);
-    }
-
-    public String sendTransactionsSelectById() {
-        return withSchema(sendTransactionsSelectById);
-    }
-
-    public String sendTransactionsSelectPage() {
-        return withSchema(sendTransactionsSelectPage);
-    }
-
-    public String sendTransactionsCount() {
-        return withSchema(sendTransactionsCount);
-    }
-
-    public String sendTransactionsDelete() {
-        return withSchema(sendTransactionsDelete);
-    }
 
     public String sendTranDtlUpsert() {
         return withSchema(sendTranDtlUpsert);

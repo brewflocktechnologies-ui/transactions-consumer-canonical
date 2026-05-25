@@ -53,5 +53,6 @@ public class SendTransaction {
     private String acctHoldNam;
     private String errCdDesc;
     private Boolean nonFinTxn;
+    private Boolean recipElig;
     private String ntwrkRespCdDesc;
 }
