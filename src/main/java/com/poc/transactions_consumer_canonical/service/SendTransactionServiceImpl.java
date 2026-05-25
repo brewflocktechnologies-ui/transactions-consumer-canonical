@@ -1,5 +1,6 @@
 package com.poc.transactions_consumer_canonical.service;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.poc.transactions_consumer_canonical.dto.*;
 import com.poc.transactions_consumer_canonical.exception.ResourceNotFoundException;
 import com.poc.transactions_consumer_canonical.model.*;
@@ -14,6 +15,7 @@ import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 
 @Slf4j
@@ -25,6 +27,8 @@ public class SendTransactionServiceImpl implements SendTransactionService {
     private final SendTranDtlRepository dtlRepo;
     private final SendRecipDtlRepository recipRepo;
     private final SendTranAddrDtlRepository addrRepo;
+    /** Used by {@link #toParentModel} and {@link #toResponse} for field-name-based copying. */
+    private final ObjectMapper objectMapper;
 
     /**
      * Self-reference injected via setter (lazy) so {@code @Transactional} calls on
@@ -142,47 +146,22 @@ public class SendTransactionServiceImpl implements SendTransactionService {
 
     // ── Mappers : Request → Model ─────────────────────────────
 
+    /**
+     * Copies all scalar fields from {@code r} to a new {@link SendTransaction} by field name.
+     * Jackson's {@code convertValue} honours the same camelCase names used by both classes,
+     * so any field added to {@link SendTransactionRequest} <em>and</em> {@link SendTransaction}
+     * is wired automatically — no manual getter/setter call needed here.
+     *
+     * <p>{@code tranId} is injected separately because it lives in the URL path, not the body.
+     * Child-table entries ({@code tranDtl}, {@code recipDtl}, {@code addrDtl}) are present in
+     * the request map but absent from {@link SendTransaction}; Jackson silently ignores them
+     * ({@code FAIL_ON_UNKNOWN_PROPERTIES = false} is the Spring Boot default).
+     */
+    @SuppressWarnings("unchecked")
     private SendTransaction toParentModel(String tranId, SendTransactionRequest r) {
-        return SendTransaction.builder()
-                .tranId(tranId)
-                .tranInitId(r.getTranInitId())
-                .origInstId(r.getOrigInstId())
-                .origInstNam(r.getOrigInstNam())
-                .tranfrAcptNam(r.getTranfrAcptNam())
-                .tranfrAcptId(r.getTranfrAcptId())
-                .tranCrteDt(r.getTranCrteDt())
-                .tranType(r.getTranType())
-                .custRefNum(r.getCustRefNum())
-                .curStat(r.getCurStat())
-                .origStat(r.getOrigStat())
-                .useCase(r.getUseCase())
-                .msgType(r.getMsgType())
-                .refId(r.getRefId())
-                .swSerNum(r.getSwSerNum())
-                .bnkntRefNum(r.getBnkntRefNum())
-                .sendAcct(r.getSendAcct())
-                .recipAcct(r.getRecipAcct())
-                .tranAmt(r.getTranAmt())
-                .tranCurr(r.getTranCurr())
-                .errCd(r.getErrCd())
-                .fundAvail(r.getFundAvail())
-                .corltnId(r.getCorltnId())
-                .crteUserNam(r.getCrteUserNam())
-                .updtUserNam(r.getUpdtUserNam())
-                .ntwrkCd(r.getNtwrkCd())
-                .ntwrkRespCd(r.getNtwrkRespCd())
-                .tranInitNam(r.getTranInitNam())
-                .namStat(r.getNamStat())
-                .cvcStat(r.getCvcStat())
-                .cvcRespCd(r.getCvcRespCd())
-                .acctNum(r.getAcctNum())
-                .acctType(r.getAcctType())
-                .acctHoldNam(r.getAcctHoldNam())
-                .errCdDesc(r.getErrCdDesc())
-                .nonFinTxn(r.getNonFinTxn())
-                .recipElig(r.getRecipElig())
-                .ntwrkRespCdDesc(r.getNtwrkRespCdDesc())
-                .build();
+        Map<String, Object> map = objectMapper.convertValue(r, Map.class);
+        map.put("tranId", tranId);
+        return objectMapper.convertValue(map, SendTransaction.class);
     }
 
     private SendTranDtl toDtlModel(String tranId, SendTranDtlRequest r) {
@@ -302,56 +281,29 @@ public class SendTransactionServiceImpl implements SendTransactionService {
 
     // ── Mappers : Model → Response ────────────────────────────
 
+    /**
+     * Copies all scalar fields from {@code p} to a new {@link SendTransactionResponse} by field
+     * name, then attaches the child-table responses explicitly.
+     *
+     * <p>Because both {@link SendTransaction} and {@link SendTransactionResponse} share the same
+     * camelCase field names for every parent-table column, any field added to both classes is
+     * surfaced in the response automatically — no manual getter/setter call needed here.
+     *
+     * <p>Child-table fields ({@code tranDtl}, {@code recipDtl}, {@code addrDtl}) are not on
+     * {@link SendTransaction}, so they will not appear in the intermediate map; they are wired
+     * explicitly after the Jackson conversion.
+     */
+    @SuppressWarnings("unchecked")
     private SendTransactionResponse toResponse(SendTransaction p,
                                                SendTranDtl dtl,
                                                SendRecipDtl recip,
                                                List<SendTranAddrDtl> addrs) {
-        return SendTransactionResponse.builder()
-                .tranId(p.getTranId())
-                .tranInitId(p.getTranInitId())
-                .origInstId(p.getOrigInstId())
-                .origInstNam(p.getOrigInstNam())
-                .tranfrAcptNam(p.getTranfrAcptNam())
-                .tranfrAcptId(p.getTranfrAcptId())
-                .tranCrteDt(p.getTranCrteDt())
-                .tranType(p.getTranType())
-                .custRefNum(p.getCustRefNum())
-                .curStat(p.getCurStat())
-                .origStat(p.getOrigStat())
-                .useCase(p.getUseCase())
-                .msgType(p.getMsgType())
-                .refId(p.getRefId())
-                .swSerNum(p.getSwSerNum())
-                .bnkntRefNum(p.getBnkntRefNum())
-                .sendAcct(p.getSendAcct())
-                .recipAcct(p.getRecipAcct())
-                .tranAmt(p.getTranAmt())
-                .tranCurr(p.getTranCurr())
-                .errCd(p.getErrCd())
-                .fundAvail(p.getFundAvail())
-                .corltnId(p.getCorltnId())
-                .crteTs(p.getCrteTs())
-                .crteUserNam(p.getCrteUserNam())
-                .updtTs(p.getUpdtTs())
-                .updtUserNam(p.getUpdtUserNam())
-                .rplctnUpdtTs(p.getRplctnUpdtTs())
-                .ntwrkCd(p.getNtwrkCd())
-                .ntwrkRespCd(p.getNtwrkRespCd())
-                .tranInitNam(p.getTranInitNam())
-                .namStat(p.getNamStat())
-                .cvcStat(p.getCvcStat())
-                .cvcRespCd(p.getCvcRespCd())
-                .acctNum(p.getAcctNum())
-                .acctType(p.getAcctType())
-                .acctHoldNam(p.getAcctHoldNam())
-                .errCdDesc(p.getErrCdDesc())
-                .nonFinTxn(p.getNonFinTxn())
-                .recipElig(p.getRecipElig())
-                .ntwrkRespCdDesc(p.getNtwrkRespCdDesc())
-                .tranDtl(dtl != null ? toDtlResponse(dtl) : null)
-                .recipDtl(recip != null ? toRecipResponse(recip) : null)
-                .addrDtl(addrs.stream().map(this::toAddrResponse).toList())
-                .build();
+        Map<String, Object> map = objectMapper.convertValue(p, Map.class);
+        SendTransactionResponse resp = objectMapper.convertValue(map, SendTransactionResponse.class);
+        resp.setTranDtl(dtl != null ? toDtlResponse(dtl) : null);
+        resp.setRecipDtl(recip != null ? toRecipResponse(recip) : null);
+        resp.setAddrDtl(addrs.stream().map(this::toAddrResponse).toList());
+        return resp;
     }
 
     private SendTranDtlResponse toDtlResponse(SendTranDtl d) {
