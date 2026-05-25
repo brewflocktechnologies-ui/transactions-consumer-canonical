@@ -7,6 +7,15 @@
 #   `source:` accepts dot-notation paths to traverse nested JSON blocks
 #   (e.g. `sendingAccountEligible.eligible` → `getSendingAccountEligible().getEligible()`).
 #   Each path segment must have a corresponding getter on the source object.
+#
+# Coverage:
+#   This mapping aims to populate every settable column on the 4 child DTOs
+#   wired into the canonical pipeline:
+#     - SEND_TRANSACTIONS    (parent)
+#     - SEND_TRAN_DTL        (tranDtl)
+#     - SEND_RECIP_DTL       (recipDtl)
+#     - SEND_TRAN_ADDR_DTL   (addrDtl, SENDER + RECIPIENT groups)
+#   (SEND_TRAN_CLRG_SETLMT is not wired into the canonical mapping engine.)
 # =============================================================================
 
 eventType: AIS
@@ -30,45 +39,185 @@ eventNames:
   - AIS
 
 # ---------------------------------------------------------------------------
-# Parent: SendTransactionRequest top-level fields
+# Parent: SendTransactionRequest top-level fields  (SEND_TRANSACTIONS)
 # ---------------------------------------------------------------------------
 parent:
   # Core identifiers
-  - { source: correlationId,                       target: corltnId }
-  - { source: accountInformationId,                target: tranInitId }
-  - { source: referenceId,                         target: refId }
+  - { source: correlationId,                               target: corltnId }
+  - { source: accountInformationId,                        target: tranInitId }
+  - { source: referenceId,                                 target: refId }
+  - { source: curStat,                                     target: curStat }
+  - { source: origStat,                                    target: origStat }
+  - { source: custRefNum,                                  target: custRefNum }
+  - { source: msgTypeInd,                                  target: msgType }
+  - { source: switchSerialNumber,                          target: swSerNum }
+  - { source: ntwrkRefNum,                                 target: bnkntRefNum }
 
   # Partner / institution
-  - { source: partnerId,                           target: origInstId }
-  - { source: partnerName,                         target: origInstNam }
+  - { source: partnerId,                                   target: origInstId }
+  - { source: partnerName,                                 target: origInstNam }
+  - { source: accountHolderName,                           target: tranInitNam }
+
+  # Transfer acceptor (top-level)
+  - { source: transferAccptName,                           target: tranfrAcptNam }
+  - { source: transferAccptId,                             target: tranfrAcptId }
 
   # Amount / currency
-  - { source: amount,                              target: tranAmt }
-  - { source: currency,                            target: tranCurr }
+  - { source: amount,                                      target: tranAmt }
+  - { source: currency,                                    target: tranCurr }
 
   # Account / card
-  - { source: accountUri,                          target: sendAcct }
-  - { source: accountType,                         target: acctType }
+  - { source: accountUri,                                  target: sendAcct }
+  - { source: rcvrAcct,                                    target: recipAcct }
+  - { source: acctNum,                                     target: acctNum }
+  - { source: accountType,                                 target: acctType }
+  - { source: accountHolderName,                           target: acctHoldNam }
 
   # Eligibility (nested) — sending account eligibility maps to RECIP_ELIG per spec
-  - { source: sendingAccountEligible.eligible,     target: recipElig }
+  - { source: sendingAccountEligible.eligible,             target: recipElig }
   - { source: sendingAccountEligible.responseReasonCode,   target: errCd }
   - { source: sendingAccountEligible.responseReasonDetail, target: errCdDesc }
 
-  # Network / brand
-  - { source: network,                             target: ntwrkCd }
+  # Network / brand / validation
+  - { source: network,                                     target: ntwrkCd }
+  - { source: networkResponseCode,                         target: ntwrkRespCd }
+  - { source: networkResponseCodeDesc,                     target: ntwrkRespCdDesc }
+  - { source: cvcStatus,                                   target: cvcStat }
+  - { source: cvcResponseCode,                             target: cvcRespCd }
+  - { source: nameStatus,                                  target: namStat }
 
   # Funds / status
-  - { source: fundsAvailability,                   target: fundAvail }
+  - { source: fundsAvailability,                           target: fundAvail }
 
   # Use-case / payment type
-  - { source: paymentType,                         target: useCase }
+  - { source: paymentType,                                 target: useCase }
 
 # ---------------------------------------------------------------------------
-# tranDtl: SendTranDtlRequest  (1:1 child)
+# tranDtl: SendTranDtlRequest  (1:1 child — SEND_TRAN_DTL)
 # ---------------------------------------------------------------------------
 tranDtl:
-  - { source: paymentType,                         target: paymtType }
-  - { source: referenceId,                         target: paymtRef }
-  - { source: originalRequestPayload,              target: origRqstPyld }
-  - { source: originalResponsePayload,             target: origRespPyld }
+  # Payment leg / references
+  - { source: paymentType,                                 target: paymtType }
+  - { source: referenceId,                                 target: paymtRef }
+  - { source: unqRefNum,                                   target: unqTranRef }
+  - { source: setlAmt,                                     target: tranSetlAmt }
+
+  # Acquiring
+  - { source: acquiringCountry,                            target: acqCntryNam }
+  - { source: acquiringIdentificationCd,                   target: acqIdenCd }
+  - { source: acqIca,                                      target: acqIca }
+
+  # Source of funds / merchant
+  - { source: fundingSource,                               target: fundSrc }
+  - { source: merchantCategoryCd,                          target: merchCatCd }
+  - { source: transactionPurpose,                          target: tranPrps }
+  - { source: tranTypeInd,                                 target: tranTypeIndCd }
+  - { source: ichgRateDsgnCd,                              target: ichgRateDsgn }
+  - { source: rateTypeIndicator,                           target: regulatedRateTypeCd }
+  - { source: pointOfServiceInteraction,                   target: pointServIntrctn }
+
+  # Originating payloads (CLOB)
+  - { source: bncGWRequest,                                target: bncGtwyRqst }
+  - { source: bncGWResponse,                               target: bncGtwyResp }
+  - { source: originalRequestPayload,                      target: origRqstPyld }
+  - { source: originalResponsePayload,                     target: origRespPyld }
+
+  # Transfer acceptor detail
+  - { source: transferAccptName,                           target: tranfrAcptNam }
+  - { source: transferAccptId,                             target: tranfrAcptId }
+  - { source: transferAccptTerminalId,                     target: tranfrTrmlId }
+  - { source: transferAccptAddrLn1,                        target: tranfrAcptStLine1 }
+  - { source: transferAccptAddrLn2,                        target: tranfrAcptStLine2 }
+  - { source: transferAccptAddrCity,                       target: tranfrAcptCity }
+  - { source: transferAccptAddrState,                      target: tranfrAcptSt }
+  - { source: transferAccptAddrCntry,                      target: tranfrAcptCntryNam }
+  - { source: transferAccptAddrPostalCd,                   target: tranfrAcptPostCd }
+  - { source: transferAcceptorMpgId,                       target: tranfrAcptMpgId }
+  - { source: merchantVerificationValue,                   target: tranfrAcptMerchValue }
+  - { source: mastercardAssignedId,                        target: mcAssgnMerch }
+
+  # Processor / facility
+  - { source: processorId,                                 target: procId }
+  - { source: paymentFacilitatorId,                        target: paymtFacltrId }
+  - { source: subMerchantId,                               target: subMerchId }
+
+  # CVC / validation
+  - { source: cvcResponseDescription,                      target: cvcRespDesc }
+
+  # Message metadata
+  - { source: msgVersion,                                  target: msgVersion }
+
+# ---------------------------------------------------------------------------
+# recipDtl: SendRecipDtlRequest  (1:1 child — SEND_RECIP_DTL)
+# ---------------------------------------------------------------------------
+recipDtl:
+  # Sender (SNDR)
+  - { source: sndrFirstName,                               target: sendFirstNam }
+  - { source: sndrMiddleName,                              target: sendMidNam }
+  - { source: sndrLastName,                                target: sendLstNam }
+  - { source: sndrPhoneNum,                                target: sendPhn }
+  - { source: sndrEmailAddr,                               target: sendEmail }
+  - { source: sndrBirthDt,                                 target: sendDob }
+  - { source: sndrNationalityCd,                           target: sendNatl }
+  - { source: sndrBirthCountry,                            target: sendBirthCntryNam }
+  - { source: sndrAcct,                                    target: sendAcctNum }
+  - { source: sndrAcctUri,                                 target: sendAcctUri }
+  - { source: senderAccountNumberType,                     target: sendAcctNumType }
+  - { source: sndrCardNum,                                 target: sendCardNum }
+  - { source: sndrCardExpirDt,                             target: sendCardExpirDt }
+  - { source: sndrGovtIdUri,                               target: sendGovtIdUri }
+  - { source: sndrAddrLine1,                               target: sendStLine1 }
+  - { source: sndrAddrLine2,                               target: sendStLine2 }
+  - { source: sndrCityName,                                target: sendCity }
+  - { source: sndrCountrySubCd,                            target: sendSt }
+  - { source: sndrCountryCd,                               target: sendCntryNam }
+  - { source: sndrPostalCd,                                target: sendPostCd }
+
+  # Receiver (RCVR)
+  - { source: rcvrFirstName,                               target: recipFirstNam }
+  - { source: rcvrMiddleName,                              target: recipMidNam }
+  - { source: rcvrLastName,                                target: recipLstNam }
+  - { source: rcvrPhoneNum,                                target: recipPhn }
+  - { source: rcvrEmailAddr,                               target: recipEmail }
+  - { source: rcvrBirthDate,                               target: recipDob }
+  - { source: rcvrNationalityCd,                           target: recipNatl }
+  - { source: rcvrBirthCountry,                            target: recipBirthCntryNam }
+  - { source: rcvrAcct,                                    target: recipAcctNum }
+  - { source: rcvrAcctUri,                                 target: recipAcctUri }
+  - { source: receiverAccountNumberType,                   target: recipAcctNumType }
+  - { source: rcvrCardNum,                                 target: recipCardNum }
+  - { source: rcvrCardExpirDt,                             target: recipCardExpirDt }
+  - { source: rcvrGovtIdUri,                               target: recipGovtIdUri }
+  - { source: rcvrAddrLine1,                               target: recipStLine1 }
+  - { source: rcvrAddrLine2,                               target: recipStLine2 }
+  - { source: rcvrCity,                                    target: recipCity }
+  - { source: rcvrCountrySubCd,                            target: recipSt }
+  - { source: rcvrCountryCd,                               target: recipCntryNam }
+  - { source: rcvrPostalCd,                                target: recipPostCd }
+
+# ---------------------------------------------------------------------------
+# addrDtl: List<SendTranAddrDtlRequest>  (1:many child — SEND_TRAN_ADDR_DTL)
+# Each group produces one address row. Omitted if all source fields are null.
+# ---------------------------------------------------------------------------
+addrDtl:
+  - addrType: SENDER
+    mappings:
+      - { source: sndrAddrLine1,                           target: stLine1 }
+      - { source: sndrAddrLine2,                           target: stLine2 }
+      - { source: sndrCityName,                            target: city }
+      - { source: sndrCountrySubCd,                        target: st }
+      - { source: sndrCountryCd,                           target: cntryNam }
+      - { source: sndrPostalCd,                            target: postCd }
+      - { source: sndrAddrStat,                            target: addrStat }
+      - { source: sndrPostCdStat,                          target: postCdStat }
+
+  - addrType: RECIPIENT
+    mappings:
+      - { source: rcvrAddrLine1,                           target: stLine1 }
+      - { source: rcvrAddrLine2,                           target: stLine2 }
+      - { source: rcvrCity,                                target: city }
+      - { source: rcvrCountrySubCd,                        target: st }
+      - { source: rcvrCountryCd,                           target: cntryNam }
+      - { source: rcvrPostalCd,                            target: postCd }
+      - { source: rcvrAddrStat,                            target: addrStat }
+      - { source: rcvrPostCdStat,                          target: postCdStat }

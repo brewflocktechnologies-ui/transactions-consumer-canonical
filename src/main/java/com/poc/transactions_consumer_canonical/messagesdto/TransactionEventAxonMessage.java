@@ -96,9 +96,13 @@ public class TransactionEventAxonMessage {
     // =====================================================
     private String sndrAcct;
     private String sndrAcctUri;
+    private String sndrCardNum;
     private String sndrCardExpirDt;
+    private String sndrGovtIdUri;
     private String sndrAddrLine1;
     private String sndrAddrLine2;
+    private String sndrAddrStat;
+    private String sndrPostCdStat;
     private String sndrBirthCountry;
     private String sndrBirthDt;
     private String sndrCityName;
@@ -131,8 +135,12 @@ public class TransactionEventAxonMessage {
     // =====================================================
     private String rcvrAcct;
     private String rcvrAcctUri;
+    private String rcvrCardNum;
+    private String rcvrGovtIdUri;
     private String rcvrAddrLine1;
     private String rcvrAddrLine2;
+    private String rcvrAddrStat;
+    private String rcvrPostCdStat;
     private String rcvrBirthCountry;
     private String rcvrBirthDate;
     private String rcvrCardExpirDt;
@@ -189,6 +197,7 @@ public class TransactionEventAxonMessage {
     private String transferAccptId;
     private String transferAccptTerminalId;
     private String transferAccptAddrLn1;
+    private String transferAccptAddrLn2;
     private String transferAccptAddrCity;
     private String transferAccptAddrState;
     private String transferAccptAddrCntry;
@@ -388,6 +397,8 @@ public class TransactionEventAxonMessage {
     private String originalEcommerceIndicator;
     private String ucafDowngradeReason;
     private String msgTypeInd;
+    private String msgVersion;
+    private String custRefNum;
     private String singleDualMessageCd;
     private String singleDualMessageCode;
     private String posAuthDE022;
@@ -482,6 +493,10 @@ public class TransactionEventAxonMessage {
     private String currency;
     private String transactionType;
     private String network;
+    private String curStat;
+    private String origStat;
+    private String accountType;
+    private String fundsAvailability;
     private AccountEligibility sendingAccountEligible;
     private AccountEligibility receivingAccountEligible;
 
