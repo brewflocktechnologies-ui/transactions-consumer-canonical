@@ -5,7 +5,6 @@ import lombok.Builder;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -25,7 +24,9 @@ public class SendTranDtl {
     private String paymtType;
     private String pointServIntrctn;
     private String tranPrps;
-    private BigDecimal tranSetlAmt;
+    // init.sql defines TRAN_SETL_AMT as VARCHAR2(50); stored as a string,
+    // not BigDecimal — keep raw representation (currency code, leading zeros, etc.).
+    private String tranSetlAmt;
     // CLOB fields — for large payloads use LobHandler in production
     private String bncGtwyRqst;
     private String bncGtwyResp;

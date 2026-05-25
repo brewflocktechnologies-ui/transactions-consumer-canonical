@@ -21,7 +21,8 @@ columns:
   - { jsonName: paymtType,              dbColumn: PAYMT_TYPE,              sqlType: VARCHAR,   maxLength: 50 }
   - { jsonName: pointServIntrctn,       dbColumn: POINT_SERV_INTRCTN,      sqlType: VARCHAR,   maxLength: 60 }
   - { jsonName: tranPrps,               dbColumn: TRAN_PRPS,               sqlType: VARCHAR,   maxLength: 50 }
-  - { jsonName: tranSetlAmt,            dbColumn: TRAN_SETL_AMT,           sqlType: NUMERIC }
+  # init.sql now defines TRAN_SETL_AMT as VARCHAR2(50) (was NUMERIC); aligned here.
+  - { jsonName: tranSetlAmt,            dbColumn: TRAN_SETL_AMT,           sqlType: VARCHAR,   maxLength: 50 }
 
   # ── CLOB columns (TO_CLOB CASE WHEN; bound as VARCHAR) ─────────────
   - { jsonName: bncGtwyRqst,            dbColumn: BNC_GTWY_RQST,           sqlType: CLOB, clob: true, nullGuard: false }
@@ -51,7 +52,8 @@ columns:
   - { jsonName: eventId,                dbColumn: EVENT_ID,                sqlType: VARCHAR,   maxLength: 40 }
   - { jsonName: eventTs,                dbColumn: EVENT_TS,                sqlType: TIMESTAMP }
   - { jsonName: eventCorltnId,          dbColumn: EVENT_CORLTN_ID,         sqlType: VARCHAR,   maxLength: 40 }
-  - { jsonName: msgVersion,             dbColumn: MSG_VERSION,             sqlType: VARCHAR,   maxLength: 2 }
+  # init.sql widened MSG_VERSION from VARCHAR2(2) to VARCHAR2(10); aligned here.
+  - { jsonName: msgVersion,             dbColumn: MSG_VERSION,             sqlType: VARCHAR,   maxLength: 10 }
   - { jsonName: tranCrteDt,             dbColumn: TRAN_CRTE_DT,            sqlType: TIMESTAMP, required: true }
   - { jsonName: rplctnUpdtTs,           dbColumn: RPLCTN_UPDT_TS,          sqlType: TIMESTAMP, audit: true, readOnly: true }
   - { jsonName: tranTypeIndCd,          dbColumn: TRAN_TYPE_IND_CD,        sqlType: VARCHAR,   maxLength: 5 }
@@ -61,3 +63,23 @@ columns:
   - { jsonName: acqIdenCd,              dbColumn: ACQ_IDEN_CD,             sqlType: VARCHAR,   maxLength: 20 }
   - { jsonName: tranfrAcptMpgId,        dbColumn: TRANFR_ACPT_MPG_ID,      sqlType: VARCHAR,   maxLength: 20 }
   - { jsonName: tranfrAcptMerchValue,   dbColumn: TRANFR_ACPT_MERCH_VALUE, sqlType: VARCHAR,   maxLength: 20 }
+
+  # ── Added by DBA (init.sql) — exposed via the metadata-driven v2 surface ──
+  - { jsonName: enhancResp,             dbColumn: ENHANC_RESP,             sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
+  - { jsonName: brand,                  dbColumn: BRAND,                   sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: accptBrand,             dbColumn: ACCPT_BRAND,             sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: prodType,               dbColumn: PROD_TYPE,               sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: acctUri,                dbColumn: ACCT_URI,                sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: instNam,                dbColumn: INST_NAM,                sqlType: VARCHAR,   maxLength: 100 }
+  - { jsonName: instCntryNam,           dbColumn: INST_CNTRY_NAM,          sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: sendErrCdDesc,          dbColumn: SEND_ERR_CD_DESC,        sqlType: VARCHAR,   maxLength: 500 }
+  - { jsonName: recipErrCdDesc,         dbColumn: RECIP_ERR_CD_DESC,       sqlType: VARCHAR,   maxLength: 500 }
+  - { jsonName: acctStmtCurr,           dbColumn: ACCT_STMT_CURR,          sqlType: VARCHAR,   maxLength: 3 }
+  - { jsonName: avsRespCdDesc,          dbColumn: AVS_RESP_CD_DESC,        sqlType: VARCHAR,   maxLength: 500 }
+  - { jsonName: tranTypeCd,             dbColumn: TRAN_TYPE_CD,            sqlType: VARCHAR,   maxLength: 2 }
+  - { jsonName: tranTypeDesc,           dbColumn: TRAN_TYPE_DESC,          sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: sysTraceAudNum,         dbColumn: SYS_TRACE_AUD_NUM,       sqlType: VARCHAR,   maxLength: 6 }
+  - { jsonName: authIdRespCd,           dbColumn: AUTH_ID_RESP_CD,         sqlType: VARCHAR,   maxLength: 6 }
+  - { jsonName: oprtEnv,                dbColumn: OPRT_ENV,                sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: tranLocTs,              dbColumn: TRAN_LOC_TS,             sqlType: TIMESTAMP }
+  - { jsonName: locDtTxt,               dbColumn: LOC_DT_TXT,              sqlType: VARCHAR,   maxLength: 50 }

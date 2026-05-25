@@ -63,12 +63,24 @@ columns:
   # ── Boolean stored as NUMBER(1,0) ──────────────────────────────────
   # null in payload → COALESCE preserves DB; true/false → 1/0
   - { jsonName: nonFinTxn,         dbColumn: NON_FIN_TXN,        sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
+  - { jsonName: sendElig,          dbColumn: SEND_ELIG,          sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
   - { jsonName: recipElig,         dbColumn: RECIP_ELIG,         sqlType: NUMERIC,   converter: BOOLEAN_AS_INT }
 
   - { jsonName: ntwrkRespCdDesc,   dbColumn: NTWRK_RESP_CD_DESC, sqlType: VARCHAR,   maxLength: 500 }
 
+  # ── Added by DBA (init.sql) — exposed via the metadata-driven v2 surface ──
+  - { jsonName: traceId,           dbColumn: TRACE_ID,           sqlType: VARCHAR,   maxLength: 50 }
+  - { jsonName: origCntry,         dbColumn: ORIG_CNTRY,         sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: sendErrCd,         dbColumn: SEND_ERR_CD,        sqlType: VARCHAR,   maxLength: 25 }
+  - { jsonName: recipErrCd,        dbColumn: RECIP_ERR_CD,       sqlType: VARCHAR,   maxLength: 25 }
+  - { jsonName: addrStat,          dbColumn: ADDR_STAT,          sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: postCdStat,        dbColumn: POST_CD_STAT,       sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: avsRespCd,         dbColumn: AVS_RESP_CD,        sqlType: VARCHAR,   maxLength: 5 }
+  - { jsonName: tlid,              dbColumn: TLID,               sqlType: VARCHAR,   maxLength: 22 }
+
 # Nested child sections in the request/response payload
 children:
-  - { jsonName: tranDtl,  tableRef: SEND_TRAN_DTL,      cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
-  - { jsonName: recipDtl, tableRef: SEND_RECIP_DTL,     cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
-  - { jsonName: addrDtl,  tableRef: SEND_TRAN_ADDR_DTL, cardinality: ONE_TO_MANY, childKey: TRAN_ID, idJsonName: id, generateIdIfMissing: true }
+  - { jsonName: tranDtl,    tableRef: SEND_TRAN_DTL,         cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
+  - { jsonName: recipDtl,   tableRef: SEND_RECIP_DTL,        cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
+  - { jsonName: clrgSetlmt, tableRef: SEND_TRAN_CLRG_SETLMT, cardinality: ONE_TO_ONE,  childKey: TRAN_ID }
+  - { jsonName: addrDtl,    tableRef: SEND_TRAN_ADDR_DTL,    cardinality: ONE_TO_MANY, childKey: TRAN_ID, idJsonName: id, generateIdIfMissing: true }

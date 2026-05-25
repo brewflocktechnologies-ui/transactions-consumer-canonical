@@ -5,7 +5,6 @@ import lombok.AllArgsConstructor;
 import lombok.Data;
 import lombok.NoArgsConstructor;
 
-import java.math.BigDecimal;
 import java.time.LocalDateTime;
 
 @Data
@@ -23,7 +22,8 @@ public class SendTranDtlRequest {
     private String paymtType;
     private String pointServIntrctn;
     private String tranPrps;
-    private BigDecimal tranSetlAmt;
+    /** TRAN_SETL_AMT is VARCHAR2(50) in the schema — accept as String. */
+    private String tranSetlAmt;
     private String bncGtwyRqst;
     private String bncGtwyResp;
     private String origRqstPyld;

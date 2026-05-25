@@ -26,7 +26,7 @@ public class SendTranDtlRowMapper implements RowMapper<SendTranDtl> {
                 .paymtType(rs.getString("PAYMT_TYPE"))
                 .pointServIntrctn(rs.getString("POINT_SERV_INTRCTN"))
                 .tranPrps(rs.getString("TRAN_PRPS"))
-                .tranSetlAmt(rs.getBigDecimal("TRAN_SETL_AMT"))
+                .tranSetlAmt(rs.getString("TRAN_SETL_AMT"))
                 .bncGtwyRqst(rs.getString("BNC_GTWY_RQST"))
                 .bncGtwyResp(rs.getString("BNC_GTWY_RESP"))
                 .origRqstPyld(rs.getString("ORIG_RQST_PYLD"))

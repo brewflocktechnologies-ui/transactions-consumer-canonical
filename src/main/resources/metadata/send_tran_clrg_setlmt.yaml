@@ -1,0 +1,45 @@
+# =====================================================================
+# SEND_TRAN_CLRG_SETLMT — 1:1 child of SEND_TRANSACTIONS
+# Clearing & settlement detail. PK = FK = TRAN_ID.
+#
+# Added entirely via YAML — no Java changes required.
+# =====================================================================
+name: SEND_TRAN_CLRG_SETLMT
+schema: SEND_TXN_OWNER
+alias: send-tran-clrg-setlmt
+pk: TRAN_ID
+pkJsonName: tranId
+defaultOrderBy: CRTE_TS DESC
+
+columns:
+  - { jsonName: tranId,            dbColumn: TRAN_ID,            sqlType: VARCHAR,   maxLength: 50,  pk: true, required: true, nullGuard: false }
+
+  # ── Clearing status (DB-enforced NOT NULL) ──────────────────────────
+  - { jsonName: clrgSt,            dbColumn: CLRG_ST,            sqlType: VARCHAR,   maxLength: 50,  required: true }
+  - { jsonName: clrgDtTs,          dbColumn: CLRG_DT_TS,         sqlType: TIMESTAMP, required: true }
+
+  # ── Acquirer / rate / message reason ────────────────────────────────
+  - { jsonName: acqIcaRefTxt,      dbColumn: ACQ_ICA_REF_TXT,    sqlType: VARCHAR,   maxLength: 250 }
+  - { jsonName: rateTypeInd,       dbColumn: RATE_TYPE_IND,      sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: msgRsnCd,          dbColumn: MSG_RSN_CD,         sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: msgRsnDesc,        dbColumn: MSG_RSN_DESC,       sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: ichgRateDsgnCd,    dbColumn: ICHG_RATE_DSGN_CD,  sqlType: VARCHAR,   maxLength: 60 }
+  - { jsonName: ichgFee,           dbColumn: ICHG_FEE,           sqlType: VARCHAR,   maxLength: 100 }
+  - { jsonName: busnSrvAgmt,       dbColumn: BUSN_SRV_AGMT,      sqlType: VARCHAR,   maxLength: 100 }
+
+  # ── Settlement (NUMBER without precision in DDL → NUMERIC) ──────────
+  - { jsonName: setlDt,            dbColumn: SETL_DT,            sqlType: DATE }
+  - { jsonName: setlAmt,           dbColumn: SETL_AMT,           sqlType: NUMERIC }
+  - { jsonName: setlCurrCd,        dbColumn: SETL_CURR_CD,       sqlType: VARCHAR,   maxLength: 3 }
+  - { jsonName: setlServId,        dbColumn: SETL_SERV_ID,       sqlType: VARCHAR,   maxLength: 11 }
+  - { jsonName: setlIca,           dbColumn: SETL_ICA,           sqlType: VARCHAR,   maxLength: 11 }
+  - { jsonName: tranFileId,        dbColumn: TRAN_FILE_ID,       sqlType: VARCHAR,   maxLength: 25 }
+
+  # ── Audit ──────────────────────────────────────────────────────────
+  # Note: UPDT_TS is NOT NULL with no DB default → SqlBuilder emits
+  # SYSTIMESTAMP on both INSERT VALUES and UPDATE SET, which satisfies it.
+  - { jsonName: crteTs,            dbColumn: CRTE_TS,            sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: crteUserNam,       dbColumn: CRTE_USER_NAM,      sqlType: VARCHAR,   maxLength: 20, insertOnly: true }
+  - { jsonName: updtTs,            dbColumn: UPDT_TS,            sqlType: TIMESTAMP, audit: true, readOnly: true }
+  - { jsonName: updtUserNam,       dbColumn: UPDT_USER_NAM,      sqlType: VARCHAR,   maxLength: 20 }
+  - { jsonName: rplctnUpdtTs,      dbColumn: RPLCTN_UPDT_TS,     sqlType: TIMESTAMP, audit: true, readOnly: true }

@@ -47,7 +47,8 @@ columns:
   - { jsonName: recipPhn,               dbColumn: RECIP_PHN,               sqlType: VARCHAR,   maxLength: 20 }
   - { jsonName: recipEmail,             dbColumn: RECIP_EMAIL,             sqlType: VARCHAR,   maxLength: 254 }
   - { jsonName: recipDob,               dbColumn: RECIP_DOB,               sqlType: DATE }
-  - { jsonName: recipNatl,              dbColumn: RECIP_NATL,              sqlType: VARCHAR,   maxLength: 60 }
+  # init.sql narrowed RECIP_NATL from VARCHAR2(60) to VARCHAR2(3); aligned here.
+  - { jsonName: recipNatl,              dbColumn: RECIP_NATL,              sqlType: VARCHAR,   maxLength: 3 }
   - { jsonName: recipBirthCntryNam,     dbColumn: RECIP_BIRTH_CNTRY_NAM,   sqlType: VARCHAR,   maxLength: 20 }
   - { jsonName: recipAcctNum,           dbColumn: RECIP_ACCT_NUM,          sqlType: VARCHAR,   maxLength: 50 }
   - { jsonName: recipAcctUri,           dbColumn: RECIP_ACCT_URI,          sqlType: VARCHAR,   maxLength: 60 }
@@ -69,3 +70,7 @@ columns:
   - { jsonName: updtUserNam,            dbColumn: UPDT_USER_NAM,           sqlType: VARCHAR,   maxLength: 20 }
   - { jsonName: tranCrteDt,             dbColumn: TRAN_CRTE_DT,            sqlType: TIMESTAMP, required: true }
   - { jsonName: rplctnUpdtTs,           dbColumn: RPLCTN_UPDT_TS,          sqlType: TIMESTAMP, audit: true, readOnly: true }
+
+  # ── Added by DBA (init.sql) — exposed via the metadata-driven v2 surface ──
+  - { jsonName: rcvrSrtCd,              dbColumn: RCVR_SRT_CD,             sqlType: VARCHAR,   maxLength: 6 }
+  - { jsonName: sendSrtCd,              dbColumn: SEND_SRT_CD,             sqlType: VARCHAR,   maxLength: 6 }

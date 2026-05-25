@@ -59,7 +59,9 @@ public class SendTranDtlRepositoryImpl implements SendTranDtlRepository {
                 .addValue("paymtType",             d.getPaymtType(),           Types.VARCHAR)
                 .addValue("pointServIntrctn",      d.getPointServIntrctn(),    Types.VARCHAR)
                 .addValue("tranPrps",              d.getTranPrps(),            Types.VARCHAR)
-                .addValue("tranSetlAmt",           d.getTranSetlAmt(),         Types.NUMERIC)
+                // TRAN_SETL_AMT is VARCHAR2(50) in the DDL — must bind as VARCHAR,
+                // otherwise Oracle rejects COALESCE(:numericBind, t.varchar2Column) with ORA-00932.
+                .addValue("tranSetlAmt",           d.getTranSetlAmt(),         Types.VARCHAR)
                 .addValue("bncGtwyRqst",           d.getBncGtwyRqst(),         Types.VARCHAR)
                 .addValue("bncGtwyResp",           d.getBncGtwyResp(),         Types.VARCHAR)
                 .addValue("origRqstPyld",          d.getOrigRqstPyld(),        Types.VARCHAR)
