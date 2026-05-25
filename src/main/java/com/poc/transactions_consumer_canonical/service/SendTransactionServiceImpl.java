@@ -13,7 +13,6 @@ import org.springframework.lang.NonNull;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
-import java.util.Collections;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
@@ -102,46 +101,6 @@ public class SendTransactionServiceImpl implements SendTransactionService {
                 recipRepo.findByTranId(tranId).orElse(null),
                 addrRepo.findByTranId(tranId)
         );
-    }
-
-    @Override
-    @Transactional(readOnly = true)
-    public PagedResponse<SendTransactionResponse> findAll(int page, int size) {
-        int offset = page * size;
-        List<SendTransactionResponse> content = txnRepo.findAll(offset, size)
-                .stream()
-                .map(p -> toResponse(p, null, null, Collections.emptyList()))
-                .toList();
-
-        long total = txnRepo.count();
-        int totalPages = (int) Math.ceil((double) total / size);
-
-        return PagedResponse.<SendTransactionResponse>builder()
-                .content(content)
-                .page(page)
-                .size(size)
-                .totalElements(total)
-                .totalPages(totalPages)
-                .first(page == 0)
-                .last(page >= totalPages - 1)
-                .build();
-    }
-
-    // ── Delete ───────────────────────────────────────────────
-
-    @Override
-    @Transactional
-    public void delete(String tranId) {
-        log.info("Deleting transaction and children for tranId={}", tranId);
-        // Verify existence first — throws 404 if not found
-        txnRepo.findById(tranId)
-                .orElseThrow(() -> new ResourceNotFoundException("SendTransaction", tranId));
-        // FK has no ON DELETE CASCADE — delete children first
-        addrRepo.deleteByTranId(tranId);
-        dtlRepo.deleteByTranId(tranId);
-        recipRepo.deleteByTranId(tranId);
-        txnRepo.deleteById(tranId);
-        log.info("Deleted transaction tranId={}", tranId);
     }
 
     // ── Mappers : Request → Model ─────────────────────────────
