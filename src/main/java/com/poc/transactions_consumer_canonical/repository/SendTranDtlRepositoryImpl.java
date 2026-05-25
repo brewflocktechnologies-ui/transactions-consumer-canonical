@@ -41,11 +41,6 @@ public class SendTranDtlRepositoryImpl implements SendTranDtlRepository {
         }
     }
 
-    @Override
-    public void deleteByTranId(String tranId) {
-        jdbc.update(sqlQueries.sendTranDtlDelete(), new MapSqlParameterSource(TRAN_ID_PARAM, tranId));
-    }
-
     private MapSqlParameterSource toParams(SendTranDtl d) {
         return new MapSqlParameterSource()
                 .addValue(TRAN_ID_PARAM,          d.getTranId(),              Types.VARCHAR)

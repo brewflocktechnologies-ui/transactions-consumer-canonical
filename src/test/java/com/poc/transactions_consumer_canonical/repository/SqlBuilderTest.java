@@ -122,17 +122,52 @@ class SqlBuilderTest {
     }
 
     @Test
-    void select_page_uses_default_order_by_and_oracle_offset_fetch() {
-        String page = sql.buildSelectPage(t);
-        assertTrue(page.contains("ORDER BY CRTE_TS DESC"));
-        assertTrue(page.contains("OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY"));
+    void select_by_fk_uses_fk_value_named_param() {
+        String sqlText = sql.buildSelectByFk(t, "PARENT_ID");
+        assertTrue(sqlText.contains("FROM APP.T1"));
+        assertTrue(sqlText.contains("WHERE PARENT_ID = :fkValue"));
     }
 
     @Test
-    void delete_by_fk_not_in_uses_collection_binding() {
-        String d = sql.buildDeleteByFkNotIn(t, "PARENT_ID");
-        assertTrue(d.contains("WHERE PARENT_ID = :fkValue"));
-        assertTrue(d.contains("ID NOT IN (:keepIds)"));
+    void merge_otherAuditColumn_omittedFromUpdateSet() {
+        TableMetadata withOtherAudit = TableMetadata.builder()
+                .name("X").alias("x").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // Audit column that is NOT one of CRTE_TS / UPDT_TS / RPLCTN_UPDT_TS
+                        ColumnMetadata.builder().jsonName("syncTs").dbColumn("SYNC_TS").sqlType("TIMESTAMP")
+                                .audit(true).build(),
+                        ColumnMetadata.builder().jsonName("name").dbColumn("NAME").sqlType("VARCHAR").build()))
+                .build();
+        withOtherAudit.validate();
+        String merge = sql.buildMerge(withOtherAudit);
+        int updateStart = merge.indexOf("WHEN MATCHED THEN UPDATE SET");
+        int insertStart = merge.indexOf("WHEN NOT MATCHED THEN INSERT");
+        String updateSection = merge.substring(updateStart, insertStart);
+        // Other audit columns fall into the "Optional.empty()" branch → not in UPDATE SET
+        assertFalse(updateSection.contains("SYNC_TS ="),
+                "other audit columns must not appear in UPDATE SET");
+        // But the audit column IS in INSERT with SYSTIMESTAMP
+        assertTrue(merge.substring(insertStart).contains("SYNC_TS"));
+    }
+
+    @Test
+    void merge_nonAuditNonClobNonNullGuard_emitsDirectAssignment() {
+        TableMetadata bare = TableMetadata.builder()
+                .name("Y").alias("y").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // nullGuard:false, non-CLOB, non-audit → direct assignment branch
+                        ColumnMetadata.builder().jsonName("status").dbColumn("STATUS").sqlType("VARCHAR")
+                                .nullGuard(false).build()))
+                .build();
+        bare.validate();
+        String merge = sql.buildMerge(bare);
+        assertTrue(merge.contains("STATUS = :status"),
+                () -> "expected direct assignment:\n" + merge);
+        assertFalse(merge.contains("STATUS = COALESCE"));
     }
 
     @Test

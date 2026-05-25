@@ -12,7 +12,6 @@ import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 import org.springframework.stereotype.Repository;
 
-import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -89,27 +88,6 @@ public class SendTransactionRepositoryImpl implements SendTransactionRepository 
         } catch (EmptyResultDataAccessException _) {
             return Optional.empty();
         }
-    }
-
-    @Override
-    public List<SendTransaction> findAll(int offset, int size) {
-        return jdbc.query(sqlBuilder.buildSelectPage(table),
-                new MapSqlParameterSource("offset", offset).addValue("size", size),
-                rowMapper);
-    }
-
-    @Override
-    public long count() {
-        Long result = jdbc.queryForObject(sqlBuilder.buildCount(table),
-                new MapSqlParameterSource(), Long.class);
-        return result != null ? result : 0L;
-    }
-
-    @Override
-    public boolean deleteById(String tranId) {
-        String pkJson = table.pkColumn().getJsonName();
-        return jdbc.update(sqlBuilder.buildDeleteByPk(table),
-                new MapSqlParameterSource(pkJson, tranId)) > 0;
     }
 
     // ──────────────────────────────────────────────────────────

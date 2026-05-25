@@ -22,17 +22,11 @@ public class SqlQueries {
     @Value("${sql.send-tran-dtl.select-by-tran-id}")
     private String sendTranDtlSelectByTranId;
 
-    @Value("${sql.send-tran-dtl.delete}")
-    private String sendTranDtlDelete;
-
     @Value("${sql.send-recip-dtl.upsert}")
     private String sendRecipDtlUpsert;
 
     @Value("${sql.send-recip-dtl.select-by-tran-id}")
     private String sendRecipDtlSelectByTranId;
-
-    @Value("${sql.send-recip-dtl.delete}")
-    private String sendRecipDtlDelete;
 
     @Value("${sql.send-tran-addr-dtl.merge}")
     private String sendTranAddrDtlMerge;
@@ -54,20 +48,12 @@ public class SqlQueries {
         return withSchema(sendTranDtlSelectByTranId);
     }
 
-    public String sendTranDtlDelete() {
-        return withSchema(sendTranDtlDelete);
-    }
-
     public String sendRecipDtlUpsert() {
         return withSchema(sendRecipDtlUpsert);
     }
 
     public String sendRecipDtlSelectByTranId() {
         return withSchema(sendRecipDtlSelectByTranId);
-    }
-
-    public String sendRecipDtlDelete() {
-        return withSchema(sendRecipDtlDelete);
     }
 
     public String sendTranAddrDtlMerge() {

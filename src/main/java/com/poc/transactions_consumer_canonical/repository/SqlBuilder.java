@@ -37,27 +37,13 @@ public class SqlBuilder {
     private static final String SQL_SELECT      = "SELECT ";
     private static final String SQL_FROM        = " FROM ";
     private static final String SQL_WHERE       = " WHERE ";
-    private static final String SQL_DELETE_FROM = "DELETE FROM ";
 
     /** key = TABLE_NAME + "|" + op */
     private final Map<String, String> cache = new ConcurrentHashMap<>();
 
-    // ──────────────────────────────────────────────────────────
-    // Public API
-    // ──────────────────────────────────────────────────────────
-
     public String buildMerge(TableMetadata t)            { return cache.computeIfAbsent(key(t, "MERGE"),  k -> doBuildMerge(t)); }
     public String buildSelectByPk(TableMetadata t)       { return cache.computeIfAbsent(key(t, "SEL_PK"), k -> doBuildSelectByPk(t)); }
     public String buildSelectByFk(TableMetadata t, String fkCol) { return doBuildSelectByFk(t, fkCol); }
-    public String buildSelectPage(TableMetadata t)       { return cache.computeIfAbsent(key(t, "SEL_PG"), k -> doBuildSelectPage(t)); }
-    public String buildCount(TableMetadata t)            { return cache.computeIfAbsent(key(t, "COUNT"),  k -> SQL_SELECT + "COUNT(*)" + SQL_FROM + t.qualifiedName()); }
-    public String buildDeleteByPk(TableMetadata t)       { return cache.computeIfAbsent(key(t, "DEL_PK"), k -> SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + t.getPk() + " = :" + t.pkColumn().getJsonName()); }
-    public String buildDeleteByFk(TableMetadata t, String fkCol) { return SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + fkCol + " = :fkValue"; }
-    public String buildDeleteByFkNotIn(TableMetadata t, String fkCol) { return SQL_DELETE_FROM + t.qualifiedName() + SQL_WHERE + fkCol + " = :fkValue AND " + t.getPk() + " NOT IN (:keepIds)"; }
-
-    // ──────────────────────────────────────────────────────────
-    // Implementations
-    // ──────────────────────────────────────────────────────────
 
     private String doBuildMerge(TableMetadata t) {
         String pkJson = t.pkColumn().getJsonName();
@@ -120,7 +106,6 @@ public class SqlBuilder {
         List<String> values = new ArrayList<>();
         for (ColumnMetadata c : t.getColumns()) {
             if (c.isReadOnly() && !c.isAudit()) continue;
-            // All audit columns (CRTE_TS, UPDT_TS, RPLCTN_UPDT_TS, ...) use SYSTIMESTAMP on insert
             values.add(c.isAudit() ? "SYSTIMESTAMP" : ":" + c.getJsonName());
         }
         return values;
@@ -134,16 +119,6 @@ public class SqlBuilder {
     private String doBuildSelectByFk(TableMetadata t, String fkCol) {
         return SQL_SELECT + columnList(t) + SQL_FROM + t.qualifiedName()
                 + SQL_WHERE + fkCol + " = :fkValue";
-    }
-
-    private String doBuildSelectPage(TableMetadata t) {
-        String orderBy = (t.getDefaultOrderBy() == null || t.getDefaultOrderBy().isBlank())
-                ? t.getPk()
-                : t.getDefaultOrderBy();
-        return SQL_SELECT + columnList(t)
-                + SQL_FROM + t.qualifiedName()
-                + " ORDER BY " + orderBy
-                + " OFFSET :offset ROWS FETCH NEXT :size ROWS ONLY";
     }
 
     private String columnList(TableMetadata t) {

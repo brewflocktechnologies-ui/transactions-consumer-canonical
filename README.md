@@ -342,7 +342,7 @@ postman/Send_Transactions_API.postman_collection.json
 ```
 URL	http://localhost:9000
 Username	admin
-Password	Admin@sonar2
+Password	Admin@sonarqube2
 Analysis Token	sqa_bbec27c41080ff590cccde40d512312cddfa3483
 
 

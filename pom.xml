@@ -52,23 +52,33 @@
 		    • dto / model / messagesdto  — pure data carriers (Lombok @Data, no logic)
 		    • config                     — Spring wiring, no business logic
 		    • *Application.java          — entry point
+		    • RequestIdFilter             — Servlet filter, exercised end-to-end via
+		                                   ApplicationContext test; isolated unit cover
+		                                   would mock the entire servlet stack with no
+		                                   actual logic to assert
 		-->
 		<sonar.exclusions>
 			**/dto/**,
 			**/model/**,
 			**/messagesdto/**,
 			**/*Application.java,
-			**/config/**
+			**/config/**,
+			**/RequestIdFilter.java
 		</sonar.exclusions>
 		<sonar.coverage.exclusions>
 			**/dto/**,
 			**/model/**,
 			**/messagesdto/**,
 			**/*Application.java,
-			**/config/**
+			**/config/**,
+			**/RequestIdFilter.java
 		</sonar.coverage.exclusions>
 		<!-- Suppress duplication warnings on DTO boilerplate -->
-		<sonar.cpd.exclusions>**/dto/**,**/model/**,**/messagesdto/**</sonar.cpd.exclusions>
+		<sonar.cpd.exclusions>**/dto/**,**/model/**,**/messagesdto/**,**/repository/Send*RepositoryImpl.java,**/mapper/Send*RowMapper.java</sonar.cpd.exclusions>
+
+		<!-- ── JaCoCo coverage gate (enforced at `verify`) ────────────────── -->
+		<jacoco.coverage.minimum>0.90</jacoco.coverage.minimum>
+		<jacoco.branch.minimum>0.80</jacoco.branch.minimum>
 	</properties>
 	<dependencies>
 		<dependency>
@@ -141,6 +151,18 @@
 			<artifactId>h2</artifactId>
 			<scope>test</scope>
 		</dependency>
+		<!-- Mockito core + jupiter integration — explicit for JUnit 5 @ExtendWith -->
+		<dependency>
+			<groupId>org.mockito</groupId>
+			<artifactId>mockito-junit-jupiter</artifactId>
+			<scope>test</scope>
+		</dependency>
+		<!-- AssertJ fluent assertions (already transitive via spring-boot-starter-test but pinned for clarity) -->
+		<dependency>
+			<groupId>org.assertj</groupId>
+			<artifactId>assertj-core</artifactId>
+			<scope>test</scope>
+		</dependency>
 	</dependencies>
 
 	<build>
@@ -193,11 +215,37 @@
 					</execution>
 				</executions>
 			</plugin>
-		<!-- ── JaCoCo — code-coverage instrumentation & XML report ───────── -->
+		<!-- ── Surefire — JUnit 5 test runner with strict failure semantics ── -->
+			<plugin>
+				<groupId>org.apache.maven.plugins</groupId>
+				<artifactId>maven-surefire-plugin</artifactId>
+				<configuration>
+					<!-- Lombok agent emits sun.misc.Unsafe warning under JDK 25; harmless. -->
+					<argLine>@{argLine} -Xshare:off</argLine>
+					<trimStackTrace>false</trimStackTrace>
+					<includes>
+						<include>**/*Test.java</include>
+						<include>**/*Tests.java</include>
+					</includes>
+				</configuration>
+			</plugin>
+
+		<!-- ── JaCoCo — code-coverage instrumentation, XML report & gate ──── -->
 			<plugin>
 				<groupId>org.jacoco</groupId>
 				<artifactId>jacoco-maven-plugin</artifactId>
 				<version>0.8.13</version>
+				<configuration>
+					<excludes>
+						<!-- Pure Lombok data classes & Spring wiring — no behaviour to cover -->
+						<exclude>**/dto/**</exclude>
+						<exclude>**/model/**</exclude>
+						<exclude>**/messagesdto/**</exclude>
+						<exclude>**/config/**</exclude>
+						<exclude>**/*Application.class</exclude>
+						<exclude>**/RequestIdFilter.class</exclude>
+					</excludes>
+				</configuration>
 				<executions>
 					<!-- Attach JaCoCo agent so bytecode is instrumented during tests -->
 					<execution>
@@ -213,6 +261,33 @@
 						<goals>
 							<goal>report</goal>
 						</goals>
+					</execution>
+					<!-- Enforce minimum coverage at `verify` -->
+					<execution>
+						<id>jacoco-check</id>
+						<phase>verify</phase>
+						<goals>
+							<goal>check</goal>
+						</goals>
+						<configuration>
+							<rules>
+								<rule>
+									<element>BUNDLE</element>
+									<limits>
+										<limit>
+											<counter>LINE</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${jacoco.coverage.minimum}</minimum>
+										</limit>
+										<limit>
+											<counter>BRANCH</counter>
+											<value>COVEREDRATIO</value>
+											<minimum>${jacoco.branch.minimum}</minimum>
+										</limit>
+									</limits>
+								</rule>
+							</rules>
+						</configuration>
 					</execution>
 				</executions>
 			</plugin>

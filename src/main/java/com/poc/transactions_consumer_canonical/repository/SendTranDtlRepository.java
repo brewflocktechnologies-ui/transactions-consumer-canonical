@@ -9,6 +9,4 @@ public interface SendTranDtlRepository {
     void upsert(SendTranDtl tranDtl);
 
     Optional<SendTranDtl> findByTranId(String tranId);
-
-    void deleteByTranId(String tranId);
 }

@@ -120,6 +120,12 @@ public class SendTransactionServiceImpl implements SendTransactionService {
     private SendTransaction toParentModel(String tranId, SendTransactionRequest r) {
         Map<String, Object> map = objectMapper.convertValue(r, Map.class);
         map.put("tranId", tranId);
+        // Remove child-table keys that exist on SendTransactionRequest but not on
+        // SendTransaction.  This ensures the subsequent convertValue succeeds
+        // regardless of whether FAIL_ON_UNKNOWN_PROPERTIES is enabled on the mapper.
+        map.remove("tranDtl");
+        map.remove("recipDtl");
+        map.remove("addrDtl");
         return objectMapper.convertValue(map, SendTransaction.class);
     }
 
