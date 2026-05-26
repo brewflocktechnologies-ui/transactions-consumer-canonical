@@ -1,7 +1,7 @@
 # =============================================================================
 # Canonical mapping: PAYMENT event type
 #
-# TransactionEventAxonMessage  →  SendTransactionRequest (canonical object)
+# source JSON payload (Map<String,Object>)  →  canonical payload (Map keyed by metadata jsonName)
 #
 # To add a new event name that uses PAYMENT mappings, just add it to
 # eventNames below — no Java changes required.
@@ -10,7 +10,7 @@
 
 eventType: PAYMENT
 tranIdSource: tranId          # TxnAxonMessage field used as DB TRAN_ID (falls back to correlationId)
-tranType: SEND                # literal value for SendTransactionRequest.tranType
+tranType: SEND                # literal value written to the canonical payload's tranType key
 
 # ---------------------------------------------------------------------------
 # Filtering rules — both checks must pass for the message to be processed.
@@ -38,7 +38,7 @@ eventNames:
   - PAYMENT_REVERSED
 
 # ---------------------------------------------------------------------------
-# Transaction: SendTransactionRequest top-level fields
+# transaction: parent SEND_TRANSACTIONS top-level fields of the canonical payload
 # ---------------------------------------------------------------------------
 transaction:
   # Core identifiers
@@ -89,7 +89,7 @@ transaction:
   - { source: channel,                 target: useCase }
 
 # ---------------------------------------------------------------------------
-# tranDtl: SendTranDtlRequest  (1:1 child)
+# tranDtl: 1:1 child section of the canonical payload  (SEND_TRAN_DTL)
 # ---------------------------------------------------------------------------
 tranDtl:
   # Payment leg references
@@ -138,7 +138,7 @@ tranDtl:
   - { source: cvcResponseDescription,       target: cvcRespDesc }
 
 # ---------------------------------------------------------------------------
-# recipDtl: SendRecipDtlRequest  (1:1 child)
+# recipDtl: 1:1 child section of the canonical payload  (SEND_RECIP_DTL)
 # ---------------------------------------------------------------------------
 recipDtl:
   # Sender (SNDR)
@@ -182,7 +182,7 @@ recipDtl:
   - { source: rcvrPostalCd,                 target: recipPostCd }
 
 # ---------------------------------------------------------------------------
-# addrDtl: List<SendTranAddrDtlRequest>  (1:many child)
+# addrDtl: 1:many child list in the canonical payload  (SEND_TRAN_ADDR_DTL)
 # Each group produces one address row. Omitted if all source fields are null.
 # ---------------------------------------------------------------------------
 addrDtl:

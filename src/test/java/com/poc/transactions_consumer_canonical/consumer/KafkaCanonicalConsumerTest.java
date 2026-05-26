@@ -1,27 +1,29 @@
 package com.poc.transactions_consumer_canonical.consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingEngine;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingRegistry;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalRuleEngine;
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventPayloadSanitizer;
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventTypeMapping;
-import com.poc.transactions_consumer_canonical.dto.SendTranClrgSetlmtRequest;
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
-import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
 import com.poc.transactions_consumer_canonical.service.ClearingEventService;
 import com.poc.transactions_consumer_canonical.service.SendTransactionService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.mockito.ArgumentCaptor;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
+import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.doThrow;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.never;
@@ -29,6 +31,10 @@ import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class KafkaCanonicalConsumerTest {
+
+    private static final String EVT_CLEARING_SETTLED = "CLEARING_SETTLED";
+    private static final String EVT_TYPE_PAYMENT     = "PAYMENT";
+    private static final String EVT_TYPE_CLEARING    = "CLEARING";
 
     private ObjectMapper mapper;
     private CanonicalMappingRegistry registry;
@@ -62,6 +68,11 @@ class KafkaCanonicalConsumerTest {
         e.setEventMetadata("{}");
         e.setEventPayload("{\"tranId\":\"X-1\"}");
         return e;
+    }
+
+    /** Returns a stub map matching the shape the consumer expects from {@code objectMapper.readValue(payload, Map.class)}. */
+    private static Map<String, Object> emptyPayloadMap() {
+        return new HashMap<>();
     }
 
     @Test
@@ -98,7 +109,7 @@ class KafkaCanonicalConsumerTest {
     void ruleEngineBlocks_skipsProcessing() throws Exception {
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(envelope());
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("PAYMENT");
+        m.setEventType(EVT_TYPE_PAYMENT);
         when(registry.findByEventName(anyString())).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(false);
 
@@ -112,7 +123,7 @@ class KafkaCanonicalConsumerTest {
     void sanitizerEmpty_skipsProcessing() throws Exception {
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(envelope());
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("PAYMENT");
+        m.setEventType(EVT_TYPE_PAYMENT);
         when(registry.findByEventName(anyString())).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.empty());
@@ -126,11 +137,11 @@ class KafkaCanonicalConsumerTest {
     void payloadDeserializationFailure_isLoggedAndSkipped() throws Exception {
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(envelope());
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("PAYMENT");
+        m.setEventType(EVT_TYPE_PAYMENT);
         when(registry.findByEventName(anyString())).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of("{}"));
-        when(mapper.readValue("{}", TransactionEventAxonMessage.class))
+        when(mapper.readValue(eq("{}"), any(TypeReference.class)))
                 .thenThrow(new JsonProcessingException("payload bad") {});
 
         consumer.consume("{}");
@@ -142,20 +153,20 @@ class KafkaCanonicalConsumerTest {
     void happyPath_callsServiceUpsert() throws Exception {
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(envelope());
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("PAYMENT");
+        m.setEventType(EVT_TYPE_PAYMENT);
         when(registry.findByEventName(anyString())).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of("{}"));
-        when(mapper.readValue("{}", TransactionEventAxonMessage.class))
-                .thenReturn(new TransactionEventAxonMessage());
+        when(mapper.readValue(eq("{}"), any(TypeReference.class)))
+                .thenReturn(emptyPayloadMap());
         when(mappingEngine.extractTranId(any(), any(), any())).thenReturn("X-1");
-        SendTransactionRequest req = new SendTransactionRequest();
-        req.setTranType("SEND");
-        when(mappingEngine.map(any(), any(), any())).thenReturn(req);
+        Map<String, Object> canonical = new LinkedHashMap<>();
+        canonical.put("tranType", "SEND");
+        when(mappingEngine.map(any(), any(), any())).thenReturn(canonical);
 
         consumer.consume("{}");
 
-        verify(service).upsert("X-1", req);
+        verify(service).upsert("X-1", canonical);
     }
 
     private void stubClrgSetlmtMappingPipeline(String eventName, String eventType) throws Exception {
@@ -169,25 +180,25 @@ class KafkaCanonicalConsumerTest {
         when(registry.findByEventName(eventName)).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of(env.getEventPayload()));
-        when(mapper.readValue(env.getEventPayload(), TransactionEventAxonMessage.class))
-                .thenReturn(new TransactionEventAxonMessage());
+        when(mapper.readValue(eq(env.getEventPayload()), any(TypeReference.class)))
+                .thenReturn(emptyPayloadMap());
         when(mappingEngine.extractTranId(any(), any(), any())).thenReturn("X-1");
         // applyTo returns the target as-is for assertion plumbing
-        when(mappingEngine.applyTo(any(), any(), any(SendTranClrgSetlmtRequest.class)))
+        when(mappingEngine.applyTo(any(), any(), any()))
                 .thenAnswer(inv -> inv.getArgument(2));
     }
 
     @Test
     void clearingEvent_routesToClearingService_typedRequest() throws Exception {
-        stubClrgSetlmtMappingPipeline("CLEARING_SETTLED", "CLEARING");
+        stubClrgSetlmtMappingPipeline(EVT_CLEARING_SETTLED, EVT_TYPE_CLEARING);
 
         consumer.consume("{}");
 
-        ArgumentCaptor<SendTranClrgSetlmtRequest> captor =
-                ArgumentCaptor.forClass(SendTranClrgSetlmtRequest.class);
-        verify(clearingService).upsertClearing(captor.capture());
-        assertThat(captor.getValue().getTranId()).isEqualTo("X-1");
-        verify(clearingService, never()).upsertSettlement(any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(clearingService).upsertClearing(eq("X-1"), captor.capture());
+        assertThat(captor.getValue()).isNotNull();
+        verify(clearingService, never()).upsertSettlement(anyString(), any());
         verify(service, never()).upsert(anyString(), any());
         verify(mappingEngine, never()).map(any(), any(), any());
     }
@@ -198,11 +209,11 @@ class KafkaCanonicalConsumerTest {
 
         consumer.consume("{}");
 
-        ArgumentCaptor<SendTranClrgSetlmtRequest> captor =
-                ArgumentCaptor.forClass(SendTranClrgSetlmtRequest.class);
-        verify(clearingService).upsertSettlement(captor.capture());
-        assertThat(captor.getValue().getTranId()).isEqualTo("X-1");
-        verify(clearingService, never()).upsertClearing(any());
+        @SuppressWarnings("unchecked")
+        ArgumentCaptor<Map<String, Object>> captor = ArgumentCaptor.forClass(Map.class);
+        verify(clearingService).upsertSettlement(eq("X-1"), captor.capture());
+        assertThat(captor.getValue()).isNotNull();
+        verify(clearingService, never()).upsertClearing(anyString(), any());
         verify(service, never()).upsert(anyString(), any());
         verify(mappingEngine, never()).map(any(), any(), any());
     }
@@ -210,45 +221,47 @@ class KafkaCanonicalConsumerTest {
     @Test
     void clrgSetlmtEvent_payloadDeserialiseFailure_isLoggedAndSkipped() throws Exception {
         EventEnvelope env = envelope();
-        env.setEventName("CLEARING_SETTLED");
+        env.setEventName(EVT_CLEARING_SETTLED);
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(env);
 
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("CLEARING");
+        m.setEventType(EVT_TYPE_CLEARING);
         m.setPipeline("CLRG_SETLMT");
-        when(registry.findByEventName("CLEARING_SETTLED")).thenReturn(Optional.of(m));
+        when(registry.findByEventName(EVT_CLEARING_SETTLED)).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of("{bad json}"));
-        when(mapper.readValue("{bad json}", TransactionEventAxonMessage.class))
+        when(mapper.readValue(eq("{bad json}"), any(TypeReference.class)))
                 .thenThrow(new JsonProcessingException("bad payload") {});
 
         consumer.consume("{}");
 
-        verify(clearingService, never()).upsertClearing(any());
-        verify(clearingService, never()).upsertSettlement(any());
+        verify(clearingService, never()).upsertClearing(anyString(), any());
+        verify(clearingService, never()).upsertSettlement(anyString(), any());
     }
 
     @Test
     void clearingEvent_serviceFailure_isLoggedNotRethrown() throws Exception {
-        stubClrgSetlmtMappingPipeline("CLEARING_SETTLED", "CLEARING");
-        doThrow(new RuntimeException("db error")).when(clearingService).upsertClearing(any());
+        stubClrgSetlmtMappingPipeline(EVT_CLEARING_SETTLED, EVT_TYPE_CLEARING);
+        doThrow(new RuntimeException("db error")).when(clearingService).upsertClearing(anyString(), any());
 
         consumer.consume("{}");
-        // no rethrow ⇒ test passes
+
+        // Service was called — the exception is swallowed, not rethrown.
+        verify(clearingService).upsertClearing(anyString(), any());
     }
 
     @Test
     void servicePersistError_isLoggedNotRethrown() throws Exception {
         when(mapper.readValue("{}", EventEnvelope.class)).thenReturn(envelope());
         EventTypeMapping m = new EventTypeMapping();
-        m.setEventType("PAYMENT");
+        m.setEventType(EVT_TYPE_PAYMENT);
         when(registry.findByEventName(anyString())).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of("{}"));
-        when(mapper.readValue("{}", TransactionEventAxonMessage.class))
-                .thenReturn(new TransactionEventAxonMessage());
+        when(mapper.readValue(eq("{}"), any(TypeReference.class)))
+                .thenReturn(emptyPayloadMap());
         when(mappingEngine.extractTranId(any(), any(), any())).thenReturn("X-1");
-        when(mappingEngine.map(any(), any(), any())).thenReturn(new SendTransactionRequest());
+        when(mappingEngine.map(any(), any(), any())).thenReturn(new LinkedHashMap<>());
         when(service.upsert(anyString(), any())).thenThrow(new RuntimeException("db error"));
 
         consumer.consume("{}");

@@ -1,30 +1,28 @@
 package com.poc.transactions_consumer_canonical.canonicalmapping;
 
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
-import com.poc.transactions_consumer_canonical.messagesdto.AccountEligibility;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
-import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.params.ParameterizedTest;
+import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.NullAndEmptySource;
 import org.junit.jupiter.params.provider.ValueSource;
+import org.springframework.util.LinkedCaseInsensitiveMap;
 
+import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
 /**
- * Exhaustive unit tests for {@link CanonicalMappingEngine}. Hits every branch:
- *  - tranIdSource resolution (present, missing, blank, exception)
- *  - transaction / tranDtl / recipDtl / addrDtl mapping
- *  - nested dot-notation (sendingAccountEligible.eligible)
- *  - type coercion (String→BigDecimal/Long/LocalDate/LocalDateTime/Boolean/Integer)
- *  - boolean isXxx() vs getXxx() getter resolution
- *  - blank / null source values skipped
- *  - missing setter on target silently skipped
- *  - addrDtl group skipped when no field maps successfully
+ * Unit tests for the Map-based {@link CanonicalMappingEngine}. Source payloads
+ * are {@code Map<String,Object>} (the same shape Jackson produces from JSON);
+ * the canonical output is also a {@code Map<String,Object>} keyed by the
+ * {@code jsonName} of each column in {@code metadata/*.yaml}.
  */
 class CanonicalMappingEngineTest {
 
@@ -43,6 +41,11 @@ class CanonicalMappingEngineTest {
         return e;
     }
 
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> source(Map<String, Object> entries) {
+        return (Map<String, Object>) CaseInsensitiveJsonMap.wrap(entries);
+    }
+
     // ─────────────────────────────────────────────────────────────────
     // extractTranId
     // ─────────────────────────────────────────────────────────────────
@@ -52,8 +55,7 @@ class CanonicalMappingEngineTest {
     void extractTranId_usesSourceField() {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranIdSource("accountInformationId");
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAccountInformationId("ACC-INFO-99");
+        Map<String, Object> txn = source(Map.of("accountInformationId", "ACC-INFO-99"));
 
         assertThat(engine.extractTranId(mapping, txn, envelope())).isEqualTo("ACC-INFO-99");
     }
@@ -61,13 +63,12 @@ class CanonicalMappingEngineTest {
     @ParameterizedTest
     @NullAndEmptySource
     @ValueSource(strings = {"   ", "nonExistentField"})
-    @DisplayName("extractTranId falls back to correlationId when tranIdSource is null")
+    @DisplayName("extractTranId falls back to correlationId when tranIdSource is null / blank / unknown")
     void extractTranId_fallsBack_whenSourceMissingBlankOrUnknown(String tranIdSource) {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranIdSource(tranIdSource);
 
-        assertThat(engine.extractTranId(mapping, new TransactionEventAxonMessage(), envelope()))
-                .isEqualTo("CORR-1");
+        assertThat(engine.extractTranId(mapping, source(Map.of()), envelope())).isEqualTo("CORR-1");
     }
 
     @Test
@@ -75,18 +76,28 @@ class CanonicalMappingEngineTest {
     void extractTranId_fallsBack_whenFieldValueIsBlank() {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranIdSource("accountInformationId");
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAccountInformationId("  ");
+        Map<String, Object> txn = source(Map.of("accountInformationId", "  "));
 
         assertThat(engine.extractTranId(mapping, txn, envelope())).isEqualTo("CORR-1");
     }
 
+    @Test
+    @DisplayName("extractTranId reads via case-insensitive key lookup")
+    void extractTranId_caseInsensitive() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranIdSource("tranId");
+        Map<String, Object> txn = source(Map.of("TRANID", "T-99"));
+
+        assertThat(engine.extractTranId(mapping, txn, envelope())).isEqualTo("T-99");
+    }
+
     // ─────────────────────────────────────────────────────────────────
-    // Full map() flow — transaction + children
+    // Full map() flow
     // ─────────────────────────────────────────────────────────────────
 
     @Test
     @DisplayName("map populates transaction, tranDtl, recipDtl, addrDtl[]")
+    @SuppressWarnings("unchecked")
     void map_fullPayload() {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranType("SEND");
@@ -104,634 +115,543 @@ class CanonicalMappingEngineTest {
                 new FieldMapping("sndrFirstName", "sendFirstNam", null),
                 new FieldMapping("sndrBirthDt",   "sendDob",      null)
         ));
-        AddrDtlGroup sender = new AddrDtlGroup("SENDER", List.of(
-                new FieldMapping("sndrAddrLine1", "stLine1", null),
-                new FieldMapping("sndrCityName",  "city",    null)
-        ));
-        AddrDtlGroup recipient = new AddrDtlGroup("RECIPIENT", List.of(
-                new FieldMapping("rcvrAddrLine1", "stLine1", null)
-        ));
-        mapping.setAddrDtl(List.of(sender, recipient));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setPartnerId("PTNR-1");
-        txn.setAmount(2500L);
-        txn.setCurrency("USD");
-        AccountEligibility elig = new AccountEligibility();
-        elig.setEligible(true);
-        txn.setSendingAccountEligible(elig);
-        txn.setOriginalRequestPayload("{\"a\":1}");
-        txn.setAcqIca("123");
-        txn.setSndrFirstName("Alice");
-        txn.setSndrBirthDt("1990-05-15");
-        txn.setSndrAddrLine1("1 First St");
-        txn.setSndrCityName("StLouis");
-        txn.setRcvrAddrLine1("2 Second Ave");
-
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
-
-        assertThat(req.getTranType()).isEqualTo("SEND");
-        assertThat(req.getCrteUserNam()).isEqualTo("SYSTEM");
-        assertThat(req.getUpdtUserNam()).isEqualTo("SYSTEM");
-        assertThat(req.getNonFinTxn()).isFalse();
-        assertThat(req.getOrigInstId()).isEqualTo("PTNR-1");
-        assertThat(req.getTranAmt()).isEqualByComparingTo("2500");
-        assertThat(req.getTranCurr()).isEqualTo("USD");
-        assertThat(req.getRecipElig()).isTrue();
-        assertThat(req.getTranCrteDt()).isNotNull();
-
-        assertThat(req.getTranDtl()).isNotNull();
-        assertThat(req.getTranDtl().getOrigRqstPyld()).isEqualTo("{\"a\":1}");
-        assertThat(req.getTranDtl().getAcqIca()).isEqualTo(123L);
-        assertThat(req.getTranDtl().getEventId()).isEqualTo("EVT-1");
-        assertThat(req.getTranDtl().getEventCorltnId()).isEqualTo("CORR-1");
-
-        assertThat(req.getRecipDtl()).isNotNull();
-        assertThat(req.getRecipDtl().getSendFirstNam()).isEqualTo("Alice");
-        assertThat(req.getRecipDtl().getSendDob()).hasToString("1990-05-15");
-
-        assertThat(req.getAddrDtl()).hasSize(2);
-        assertThat(req.getAddrDtl().get(0).getAddrType()).isEqualTo("SENDER");
-        assertThat(req.getAddrDtl().get(0).getStLine1()).isEqualTo("1 First St");
-        assertThat(req.getAddrDtl().get(1).getStLine1()).isEqualTo("2 Second Ave");
-    }
-
-    @Test
-    @DisplayName("addrDtl group with no populated fields is dropped from result")
-    void map_addrDtl_emptyGroupDropped() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("SEND");
         mapping.setAddrDtl(List.of(
                 new AddrDtlGroup("SENDER", List.of(
-                        new FieldMapping("sndrAddrLine1", "stLine1", null)
-                )),
-                // RECIPIENT mappings all reference absent source fields → no field written → dropped
+                        new FieldMapping("sndrAddrLine1", "stLine1", null),
+                        new FieldMapping("sndrCityName",  "city",    null))),
                 new AddrDtlGroup("RECIPIENT", List.of(
-                        new FieldMapping("rcvrAddrLine1", "stLine1", null)
-                ))
+                        new FieldMapping("rcvrAddrLine1", "stLine1", null)))
         ));
 
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrAddrLine1("1 First St");
-        // rcvrAddrLine1 left null
+        Map<String, Object> txn = source(Map.ofEntries(
+                Map.entry("partnerId",               "PTNR-1"),
+                Map.entry("amount",                  "2500"),
+                Map.entry("currency",                "USD"),
+                Map.entry("sendingAccountEligible",  Map.of("eligible", true)),
+                Map.entry("originalRequestPayload",  "<xml/>"),
+                Map.entry("acqIca",                  "ACQ-001"),
+                Map.entry("sndrFirstName",           "Alice"),
+                Map.entry("sndrBirthDt",             "1990-05-15"),
+                Map.entry("sndrAddrLine1",           "1 Main St"),
+                Map.entry("sndrCityName",            "Tampa"),
+                Map.entry("rcvrAddrLine1",           "9 Beach Rd")
+        ));
 
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
+        Map<String, Object> req = engine.map(mapping, txn, envelope());
 
-        assertThat(req.getAddrDtl()).hasSize(1);
-        assertThat(req.getAddrDtl().get(0).getAddrType()).isEqualTo("SENDER");
+        // Parent
+        assertThat(req)
+                .containsEntry("tranType", "SEND")
+                .containsEntry("origInstId", "PTNR-1")
+                .containsEntry("tranAmt", "2500")
+                .containsEntry("tranCurr", "USD")
+                .containsEntry("recipElig", true)
+                .containsEntry("crteUserNam", "SYSTEM")
+                .containsEntry("updtUserNam", "SYSTEM")
+                .containsEntry("nonFinTxn", false)
+                .containsKey("tranCrteDt");
+
+        // tranDtl
+        Map<String, Object> dtl = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_TRAN_DTL);
+        assertThat(dtl)
+                .isNotNull()
+                .containsEntry("origRqstPyld", "<xml/>")
+                .containsEntry("acqIca", "ACQ-001")
+                .containsEntry("eventId", "EVT-1")
+                .containsEntry("eventCorltnId", "CORR-1")
+                .containsEntry("crteUserNam", "SYSTEM");
+
+        // recipDtl
+        Map<String, Object> recip = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_RECIP_DTL);
+        assertThat(recip)
+                .containsEntry("sendFirstNam", "Alice")
+                .containsEntry("sendDob", "1990-05-15");
+
+        // addrDtl
+        List<Map<String, Object>> addrs = (List<Map<String, Object>>) req.get(CanonicalMappingEngine.SECTION_ADDR_DTL);
+        assertThat(addrs).hasSize(2);
+        assertThat(addrs.get(0))
+                .containsEntry("addrType", "SENDER")
+                .containsEntry("stLine1", "1 Main St");
+        assertThat(addrs.get(1))
+                .containsEntry("addrType", "RECIPIENT")
+                .containsEntry("stLine1", "9 Beach Rd");
     }
 
     @Test
-    @DisplayName("when every addrDtl group is empty the field is left null")
-    void map_addrDtl_allEmptySetsNull() {
+    @DisplayName("map skips an addrDtl group entirely if no field matches the source")
+    void map_addrGroup_skippedWhenNoSourceFieldMapped() {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranType("SEND");
         mapping.setAddrDtl(List.of(
                 new AddrDtlGroup("SENDER", List.of(
-                        new FieldMapping("sndrAddrLine1", "stLine1", null)
-                ))
+                        new FieldMapping("sndrAddrLine1", "stLine1", null))),
+                new AddrDtlGroup("BILLING", List.of(
+                        new FieldMapping("billingLine1", "stLine1", null)))
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
 
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
+        Map<String, Object> txn = source(Map.of("sndrAddrLine1", "1 Main St"));
 
-        assertThat(req.getAddrDtl()).isNull();
+        Map<String, Object> req = engine.map(mapping, txn, envelope());
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> addrs =
+                (List<Map<String, Object>>) req.get(CanonicalMappingEngine.SECTION_ADDR_DTL);
+        assertThat(addrs).hasSize(1);
+        assertThat(addrs.get(0)).containsEntry("addrType", "SENDER");
     }
 
     @Test
-    @DisplayName("child sections are absent when mappings list is null or empty")
-    void map_childSections_absentWhenMappingsMissing() {
+    @DisplayName("map omits addrDtl entirely when no group has any populated source field")
+    void map_addrDtl_omittedWhenAllGroupsEmpty() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        // intentionally no transaction / tranDtl / recipDtl / addrDtl set
-
-        SendTransactionRequest req = engine.map(mapping, new TransactionEventAxonMessage(), envelope());
-
-        assertThat(req.getTranDtl()).isNull();
-        assertThat(req.getRecipDtl()).isNull();
-        assertThat(req.getAddrDtl()).isNull();
-        assertThat(req.getTranType()).isEqualTo("AIS");
+        mapping.setTranType("SEND");
+        mapping.setAddrDtl(List.of(
+                new AddrDtlGroup("SENDER", List.of(
+                        new FieldMapping("sndrAddrLine1", "stLine1", null)))
+        ));
+        Map<String, Object> req = engine.map(mapping, source(Map.of()), envelope());
+        assertThat(req).doesNotContainKey(CanonicalMappingEngine.SECTION_ADDR_DTL);
     }
 
     @Test
-    @DisplayName("blank source values are skipped, non-blank coerced")
-    void map_blankSourceSkipped() {
+    @DisplayName("map skips null / blank source values silently")
+    void map_skipsNullAndBlankValues() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
+        mapping.setTranType("SEND");
         mapping.setTransaction(List.of(
-                new FieldMapping("partnerName", "origInstNam", null),
-                new FieldMapping("partnerId",   "origInstId",  null)
+                new FieldMapping("amount", "tranAmt", null),
+                new FieldMapping("notes",  "comments", null)
         ));
 
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setPartnerName("  "); // blank → skipped
-        txn.setPartnerId("PTNR-X");
+        Map<String, Object> txn = new HashMap<>();
+        txn.put("amount", "100");
+        txn.put("notes", "   "); // blank → skipped
+        Map<String, Object> req = engine.map(mapping, source(txn), envelope());
 
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
-
-        assertThat(req.getOrigInstNam()).isNull();
-        assertThat(req.getOrigInstId()).isEqualTo("PTNR-X");
+        assertThat(req)
+                .containsEntry("tranAmt", "100")
+                .doesNotContainKey("comments");
     }
 
     @Test
-    @DisplayName("unknown target field is silently skipped")
-    void map_unknownTargetSkipped() {
+    @DisplayName("map skips a mapping when the source field is absent")
+    void map_skipsAbsentSourceField() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
+        mapping.setTranType("SEND");
         mapping.setTransaction(List.of(
-                new FieldMapping("partnerId", "someUnknownTargetField", null)
+                new FieldMapping("notInSource", "shouldNotAppear", null)
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setPartnerId("PTNR-Y");
 
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
-
-        assertThat(req.getOrigInstId()).isNull(); // setter does not exist for that name
+        Map<String, Object> req = engine.map(mapping, source(Map.of()), envelope());
+        assertThat(req).doesNotContainKey("shouldNotAppear");
     }
 
     @Test
-    @DisplayName("nested dot-notation handles null intermediate object")
-    void map_nestedDotPath_nullIntermediateReturnsNull() {
+    @DisplayName("map traverses nested paths with case-insensitive segments")
+    @SuppressWarnings("unchecked")
+    void map_nestedDotPath_caseInsensitive() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
+        mapping.setTranType("SEND");
         mapping.setTransaction(List.of(
-                new FieldMapping("sendingAccountEligible.eligible", "recipElig", null)
+                new FieldMapping("account.eligible", "recipElig", null)
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        // sendingAccountEligible left null
 
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
+        Map<String, Object> txn = source(Map.of("ACCOUNT", Map.of("ELIGIBLE", true)));
+        Map<String, Object> req = engine.map(mapping, txn, envelope());
 
-        assertThat(req.getRecipElig()).isNull();
+        assertThat(req).containsEntry("recipElig", true);
     }
 
     @Test
-    @DisplayName("coerce handles unparseable number gracefully")
-    void map_coerce_unparseable_skipped() {
+    @DisplayName("map returns null at the first non-Map segment in a dot path")
+    void map_dotPath_stopsAtNonMapSegment() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
+        mapping.setTranType("SEND");
+        mapping.setTransaction(List.of(
+                new FieldMapping("tranAmt.amount", "shouldNotAppear", null)
+        ));
+        Map<String, Object> txn = source(Map.of("tranAmt", "2500")); // not a Map → stops
+        Map<String, Object> req = engine.map(mapping, txn, envelope());
+        assertThat(req).doesNotContainKey("shouldNotAppear");
+    }
+
+    @Test
+    @DisplayName("map populates tranDtl envelope fields even when no source-driven fields match")
+    @SuppressWarnings("unchecked")
+    void map_tranDtl_envelopeFieldsPopulatedEvenWithoutSourceMatches() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
         mapping.setTranDtl(List.of(
-                new FieldMapping("acqIca", "acqIca", null)
+                new FieldMapping("originalRequestPayload", "origRqstPyld", null)
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAcqIca("not-a-number");
-
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
-
-        // coercion fails → silently skipped → acqIca stays null
-        assertThat(req.getTranDtl()).isNotNull();
-        assertThat(req.getTranDtl().getAcqIca()).isNull();
-    }
-
-    @Test
-    @DisplayName("LocalDate coercion accepts both yyyy-MM-dd and ISO datetime prefix")
-    void map_dateCoercion_acceptsLongerIsoString() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        mapping.setRecipDtl(List.of(
-                new FieldMapping("sndrBirthDt", "sendDob", null)
-        ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrBirthDt("1985-04-10T00:00:00");
-
-        SendTransactionRequest req = engine.map(mapping, txn, envelope());
-
-        assertThat(req.getRecipDtl().getSendDob()).hasToString("1985-04-10");
+        Map<String, Object> req = engine.map(mapping, source(Map.of()), envelope());
+        Map<String, Object> dtl = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_TRAN_DTL);
+        assertThat(dtl)
+                .containsEntry("eventId", "EVT-1")
+                .containsEntry("eventCorltnId", "CORR-1")
+                .doesNotContainKey("origRqstPyld"); // source absent → skipped
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // sourceMappings overlay
+    // applyTo (used by the CLEARING / SETTLEMENT 5th-table flow)
     // ─────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("no sourceMappings defined — common mappings run normally, no overlay attempted")
-    void sourceMappings_notDefined_commonMappingsRunNormally() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("PAYMENT");
-        mapping.setTransaction(List.of(
-                new FieldMapping("partnerId", "origInstId", null),
-                new FieldMapping("network",   "ntwrkCd",   null)
-        ));
-        // sourceMappings intentionally absent — simulates PAYMENT.yaml / FUNDING.yaml style
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setPartnerId("PTNR-1");
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("ANY_SOURCE"); // source present but no sourceMappings block
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getOrigInstId()).isEqualTo("PTNR-1");
-        assertThat(req.getNtwrkCd()).isEqualTo("VISA");
-    }
-
-    private EventTypeMapping mappingWithSourceOverrides() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        mapping.setTransaction(List.of(
-                new FieldMapping("correlationId", "corltnId", null)
-        ));
-
-        SourceMapping scs = new SourceMapping();
-        scs.setTransaction(List.of(new FieldMapping("network",    "ntwrkCd", null)));
-
-        SourceMapping ais = new SourceMapping();
-        ais.setTransaction(List.of(new FieldMapping("networkSrc", "ntwrkCd", null)));
-
-        mapping.setSourceMappings(java.util.Map.of(
-                "SEND_COMMON_SERVICES", scs,
-                "AIS_SERVICE",          ais
-        ));
-        return mapping;
-    }
-
-    @Test
-    @DisplayName("sourceMappings: SEND_COMMON_SERVICES maps 'network' to ntwrkCd")
-    void sourceMappings_sendCommonServices_mapsNetworkField() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SEND_COMMON_SERVICES");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isEqualTo("VISA");
-    }
-
-    @Test
-    @DisplayName("sourceMappings: AIS_SERVICE maps 'networkSrc' to ntwrkCd")
-    void sourceMappings_aisService_mapsNetworkSrcField() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setNetworkSrc("MASTERCARD");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("AIS_SERVICE");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isEqualTo("MASTERCARD");
-    }
-
-    @Test
-    @DisplayName("sourceMappings: source field absent in JSON leaves target null")
-    void sourceMappings_missingSourceField_targetRemainsNull() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        // networkSrc not set — simulates field absent in incoming JSON
-
-        EventEnvelope env = envelope();
-        env.setEventSource("AIS_SERVICE");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isNull();
-    }
-
-    @Test
-    @DisplayName("sourceMappings: common mappings still apply regardless of source")
-    void sourceMappings_commonMappingsAlwaysApplied() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setCorrelationId("CORR-42");
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SEND_COMMON_SERVICES");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getCorltnId()).isEqualTo("CORR-42");
-        assertThat(req.getNtwrkCd()).isEqualTo("VISA");
-    }
-
-    @Test
-    @DisplayName("sourceMappings: unrecognised source skips overlay, common mappings still run")
-    void sourceMappings_unknownSource_onlyCommonApplied() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setCorrelationId("CORR-99");
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("UNKNOWN_SOURCE");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getCorltnId()).isEqualTo("CORR-99");
-        assertThat(req.getNtwrkCd()).isNull(); // no source-specific mapping ran
-    }
-
-    @Test
-    @DisplayName("sourceMappings: lookup is case-insensitive")
-    void sourceMappings_caseInsensitiveLookup() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setNetwork("AMEX");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("send_common_services"); // lower-case
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isEqualTo("AMEX");
-    }
-
-    @Test
-    @DisplayName("sourceMappings: null eventSource skips overlay entirely")
-    void sourceMappings_nullEventSource_skipsOverlay() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource(null); // null → resolveSourceMapping returns null
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isNull(); // overlay not applied
-    }
-
-    @Test
-    @DisplayName("sourceMappings: blank eventSource skips overlay entirely")
-    void sourceMappings_blankEventSource_skipsOverlay() {
-        EventTypeMapping mapping = mappingWithSourceOverrides();
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setNetwork("VISA");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("   "); // blank → resolveSourceMapping returns null
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getNtwrkCd()).isNull();
-    }
-
-    // ─────────────────────────────────────────────────────────────────
-    // applyTo() public API
-    // ─────────────────────────────────────────────────────────────────
-
-    @Test
-    @DisplayName("applyTo maps source fields onto the supplied target and returns it")
-    void applyTo_mapsFieldsAndReturnsTarget() {
+    @DisplayName("applyTo writes each mapping into the target map and returns it")
+    void applyTo_writesEachMappingIntoTarget() {
         List<FieldMapping> mappings = List.of(
-                new FieldMapping("partnerId", "origInstId", null),
-                new FieldMapping("currency",  "tranCurr",   null)
+                new FieldMapping("clearingStatus", "clrgSt",   null),
+                new FieldMapping("clearingDate",   "clrgDtTs", null)
         );
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setPartnerId("PTNR-APT");
-        txn.setCurrency("EUR");
+        Map<String, Object> txn = source(Map.of(
+                "clearingStatus", "SETTLED",
+                "clearingDate",   "2026-05-26T10:00:00"));
+        Map<String, Object> target = new LinkedHashMap<>();
 
-        SendTransactionRequest req = new SendTransactionRequest();
-        SendTransactionRequest result = engine.applyTo(mappings, txn, req);
+        Map<String, Object> returned = engine.applyTo(mappings, txn, target);
 
-        assertThat(result).isSameAs(req);
-        assertThat(result.getOrigInstId()).isEqualTo("PTNR-APT");
-        assertThat(result.getTranCurr()).isEqualTo("EUR");
+        assertThat(returned).isSameAs(target);
+        assertThat(target)
+                .containsEntry("clrgSt", "SETTLED")
+                .containsEntry("clrgDtTs", "2026-05-26T10:00:00");
+    }
+
+    @Test
+    @DisplayName("applyTo silently skips null source values without throwing")
+    void applyTo_skipsNullValues() {
+        List<FieldMapping> mappings = List.of(
+                new FieldMapping("missing", "shouldNotAppear", null)
+        );
+        Map<String, Object> target = engine.applyTo(mappings, source(Map.of()), new LinkedHashMap<>());
+        assertThat(target).doesNotContainKey("shouldNotAppear");
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // applySourceOverlay — tranDtl branches
+    // Source-specific overlays
     // ─────────────────────────────────────────────────────────────────
 
-    @Test
-    @DisplayName("source overlay creates tranDtl when req has none")
-    void sourceOverlay_tranDtl_createsWhenAbsent() {
+    @ParameterizedTest
+    @CsvSource({
+        "ais_service, OVERRIDE, ORIG",
+        "'', COMMON, COMMON",
+        "UNKNOWN, COMMON, COMMON"
+    })
+    @DisplayName("sourceMappings overlay parameterized test")
+    void map_sourceOverlay_parameterized(String eventSource, String expectedNtwrkCd, String origNetworkVal) {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        // No common tranDtl → req.getTranDtl() will be null before overlay
-        SourceMapping sm = new SourceMapping();
-        sm.setTranDtl(List.of(new FieldMapping("acqIca", "paymtRef", null)));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
+        mapping.setTranType("SEND");
+        mapping.setTransaction(List.of(new FieldMapping("network", "ntwrkCd", null)));
 
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAcqIca("REF-001");
+        SourceMapping sm = new SourceMapping();
+        sm.setTransaction(List.of(new FieldMapping("networkSrc", "ntwrkCd", null)));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
+
+        Map<String, Object> txn = source(Map.of(
+                "network", origNetworkVal,
+                "networkSrc", "OVERRIDE"));
 
         EventEnvelope env = envelope();
-        env.setEventSource("SRC");
+        env.setEventSource(eventSource);
 
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getTranDtl()).isNotNull();
-        assertThat(req.getTranDtl().getPaymtRef()).isEqualTo("REF-001");
+        Map<String, Object> req = engine.map(mapping, txn, env);
+        assertThat(req).containsEntry("ntwrkCd", expectedNtwrkCd);
     }
 
     @Test
-    @DisplayName("source overlay appends to existing tranDtl without replacing it")
-    void sourceOverlay_tranDtl_appendsToExisting() {
+    @DisplayName("sourceMappings: tranDtl overlay creates section if main mapping didn't populate it")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_tranDtl_createsSectionIfAbsent() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        // Common tranDtl sets paymtType
-        mapping.setTranDtl(List.of(new FieldMapping("acqIca", "paymtType", null)));
-        // Overlay adds paymtRef on top
-        SourceMapping sm = new SourceMapping();
-        sm.setTranDtl(List.of(new FieldMapping("currency", "paymtRef", null)));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
+        mapping.setTranType("SEND");
 
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAcqIca("PAYMENT");
-        txn.setCurrency("REF-002");
+        SourceMapping sm = new SourceMapping();
+        sm.setTranDtl(List.of(new FieldMapping("paymtRef", "paymtRef", null)));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
 
         EventEnvelope env = envelope();
-        env.setEventSource("SRC");
+        env.setEventSource("AIS_SERVICE");
 
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getTranDtl()).isNotNull();
-        assertThat(req.getTranDtl().getPaymtType()).isEqualTo("PAYMENT");
-        assertThat(req.getTranDtl().getPaymtRef()).isEqualTo("REF-002");
+        Map<String, Object> req = engine.map(mapping, source(Map.of("paymtRef", "PR-X")), env);
+        Map<String, Object> dtl = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_TRAN_DTL);
+        assertThat(dtl)
+                .isNotNull()
+                .containsEntry("paymtRef", "PR-X")
+                .containsEntry("eventId", "EVT-1"); // envelope fields seeded
     }
 
-    // ─────────────────────────────────────────────────────────────────
-    // applySourceOverlay — recipDtl branches
-    // ─────────────────────────────────────────────────────────────────
+    @Test
+    @DisplayName("sourceMappings: tranDtl overlay merges into existing section without re-seeding envelope fields")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_tranDtl_mergesIntoExisting() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
+        mapping.setTranDtl(List.of(new FieldMapping("acqIca", "acqIca", null)));
+
+        SourceMapping sm = new SourceMapping();
+        sm.setTranDtl(List.of(new FieldMapping("paymtRef", "paymtRef", null)));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
+
+        EventEnvelope env = envelope();
+        env.setEventSource("AIS_SERVICE");
+
+        Map<String, Object> req = engine.map(mapping,
+                source(Map.of("acqIca", "ACQ-1", "paymtRef", "PR-X")), env);
+        Map<String, Object> dtl = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_TRAN_DTL);
+        assertThat(dtl)
+                .containsEntry("acqIca", "ACQ-1")
+                .containsEntry("paymtRef", "PR-X");
+    }
 
     @Test
-    @DisplayName("source overlay creates recipDtl when req has none")
-    void sourceOverlay_recipDtl_createsWhenAbsent() {
+    @DisplayName("sourceMappings: recipDtl overlay creates section if absent")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_recipDtl_createsSectionIfAbsent() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
+        mapping.setTranType("SEND");
+
         SourceMapping sm = new SourceMapping();
         sm.setRecipDtl(List.of(new FieldMapping("sndrFirstName", "sendFirstNam", null)));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrFirstName("Bob");
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
 
         EventEnvelope env = envelope();
-        env.setEventSource("SRC");
+        env.setEventSource("AIS_SERVICE");
 
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getRecipDtl()).isNotNull();
-        assertThat(req.getRecipDtl().getSendFirstNam()).isEqualTo("Bob");
+        Map<String, Object> req = engine.map(mapping, source(Map.of("sndrFirstName", "Alice")), env);
+        Map<String, Object> recip = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_RECIP_DTL);
+        assertThat(recip).containsEntry("sendFirstNam", "Alice");
     }
 
     @Test
-    @DisplayName("source overlay appends to existing recipDtl without replacing it")
-    void sourceOverlay_recipDtl_appendsToExisting() {
+    @DisplayName("sourceMappings: recipDtl overlay merges into existing section")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_recipDtl_mergesIntoExisting() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        mapping.setRecipDtl(List.of(new FieldMapping("sndrFirstName", "sendFirstNam", null)));
-        SourceMapping sm = new SourceMapping();
-        sm.setRecipDtl(List.of(new FieldMapping("sndrLastName", "sendLstNam", null)));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
+        mapping.setTranType("SEND");
+        mapping.setRecipDtl(List.of(new FieldMapping("sndrLastName", "sendLstNam", null)));
 
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrFirstName("Carol");
-        txn.setSndrLastName("Smith");
+        SourceMapping sm = new SourceMapping();
+        sm.setRecipDtl(List.of(new FieldMapping("sndrFirstName", "sendFirstNam", null)));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
 
         EventEnvelope env = envelope();
-        env.setEventSource("SRC");
+        env.setEventSource("AIS_SERVICE");
 
-        SendTransactionRequest req = engine.map(mapping, txn, env);
+        Map<String, Object> req = engine.map(mapping,
+                source(Map.of("sndrFirstName", "Alice", "sndrLastName", "Brown")), env);
+        Map<String, Object> recip = (Map<String, Object>) req.get(CanonicalMappingEngine.SECTION_RECIP_DTL);
+        assertThat(recip)
+                .containsEntry("sendFirstNam", "Alice")
+                .containsEntry("sendLstNam", "Brown");
+    }
 
-        assertThat(req.getRecipDtl().getSendFirstNam()).isEqualTo("Carol");
-        assertThat(req.getRecipDtl().getSendLstNam()).isEqualTo("Smith");
+    @Test
+    @DisplayName("sourceMappings: addrDtl overlay merges into existing matching group (case-insensitive addrType)")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_addrDtl_mergesIntoExistingGroup() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
+        mapping.setAddrDtl(List.of(
+                new AddrDtlGroup("SENDER", List.of(
+                        new FieldMapping("sndrAddrLine1", "stLine1", null)))
+        ));
+
+        SourceMapping sm = new SourceMapping();
+        sm.setAddrDtl(List.of(
+                new AddrDtlGroup("sender", List.of( // lowercase → case-insensitive
+                        new FieldMapping("sndrCityName", "city", null)))
+        ));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
+
+        EventEnvelope env = envelope();
+        env.setEventSource("AIS_SERVICE");
+
+        Map<String, Object> req = engine.map(mapping,
+                source(Map.of("sndrAddrLine1", "1 Main", "sndrCityName", "Tampa")), env);
+        List<Map<String, Object>> addrs =
+                (List<Map<String, Object>>) req.get(CanonicalMappingEngine.SECTION_ADDR_DTL);
+        assertThat(addrs).hasSize(1);
+        assertThat(addrs.get(0)).containsEntry("stLine1", "1 Main");
+        assertThat(addrs.get(0)).containsEntry("city", "Tampa");
+    }
+
+    @Test
+    @DisplayName("sourceMappings: addrDtl overlay adds a new group when no matching addrType")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_addrDtl_addsNewGroup() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
+        mapping.setAddrDtl(List.of(
+                new AddrDtlGroup("SENDER", List.of(
+                        new FieldMapping("sndrAddrLine1", "stLine1", null)))
+        ));
+
+        SourceMapping sm = new SourceMapping();
+        sm.setAddrDtl(List.of(
+                new AddrDtlGroup("BILLING", List.of(
+                        new FieldMapping("billingLine1", "stLine1", null)))
+        ));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
+
+        EventEnvelope env = envelope();
+        env.setEventSource("AIS_SERVICE");
+
+        Map<String, Object> req = engine.map(mapping,
+                source(Map.of("sndrAddrLine1", "1 Main", "billingLine1", "5 Bill St")), env);
+        List<Map<String, Object>> addrs =
+                (List<Map<String, Object>>) req.get(CanonicalMappingEngine.SECTION_ADDR_DTL);
+        assertThat(addrs).hasSize(2);
+        assertThat(addrs.get(1)).containsEntry("addrType", "BILLING").containsEntry("stLine1", "5 Bill St");
+    }
+
+    @Test
+    @DisplayName("sourceMappings: addrDtl overlay skips new group when no source field matches")
+    @SuppressWarnings("unchecked")
+    void map_sourceOverlay_addrDtl_skipsEmptyNewGroup() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
+
+        SourceMapping sm = new SourceMapping();
+        sm.setAddrDtl(List.of(
+                new AddrDtlGroup("BILLING", List.of(
+                        new FieldMapping("notPresent", "stLine1", null)))
+        ));
+        mapping.setSourceMappings(Map.of("AIS_SERVICE", sm));
+
+        EventEnvelope env = envelope();
+        env.setEventSource("AIS_SERVICE");
+
+        Map<String, Object> req = engine.map(mapping, source(Map.of()), env);
+        assertThat(req).doesNotContainKey(CanonicalMappingEngine.SECTION_ADDR_DTL);
+    }
+
+    // Deleted blank and unknown eventSource overlay tests as they are covered by map_sourceOverlay_parameterized
+
+    // ─────────────────────────────────────────────────────────────────
+    // Case-insensitive Map behaviour
+    // ─────────────────────────────────────────────────────────────────
+
+    @Test
+    @DisplayName("case-insensitive lookup: source key uses MixedCase but path is camelCase")
+    void map_caseInsensitiveLookup_mixedCaseKey() {
+        EventTypeMapping mapping = new EventTypeMapping();
+        mapping.setTranType("SEND");
+        mapping.setTransaction(List.of(
+                new FieldMapping("partnerId", "origInstId", null)
+        ));
+        // Source uses snake_case-ish key — case-insensitive lookup still resolves it
+        Map<String, Object> txn = source(Map.of("PARTNERID", "P-1"));
+        Map<String, Object> req = engine.map(mapping, txn, envelope());
+        assertThat(req).containsEntry("origInstId", "P-1");
+    }
+
+    @Test
+    @DisplayName("CaseInsensitiveJsonMap.wrapMap recursively wraps nested maps")
+    @SuppressWarnings("unchecked")
+    void caseInsensitiveJsonMap_wrapsRecursively() {
+        Map<String, Object> raw = new HashMap<>();
+        raw.put("Outer", Map.of("Inner", "value"));
+        Map<String, Object> wrapped = CaseInsensitiveJsonMap.wrapMap(raw);
+        assertThat(wrapped).isInstanceOf(LinkedCaseInsensitiveMap.class);
+        Object inner = wrapped.get("OUTER");
+        assertThat(inner).isInstanceOf(LinkedCaseInsensitiveMap.class);
+        Map<String, Object> innerMap = (Map<String, Object>) inner;
+        assertThat(innerMap).containsEntry("inner", "value");
+    }
+
+    @Test
+    @DisplayName("CaseInsensitiveJsonMap.wrapMap returns empty map for null input")
+    void caseInsensitiveJsonMap_nullInput_emptyMap() {
+        Map<String, Object> wrapped = CaseInsensitiveJsonMap.wrapMap(null);
+        assertThat(wrapped)
+                .isInstanceOf(LinkedCaseInsensitiveMap.class)
+                .isEmpty();
+    }
+
+    @Test
+    @DisplayName("CaseInsensitiveJsonMap walks nested lists too")
+    @SuppressWarnings("unchecked")
+    void caseInsensitiveJsonMap_walksLists() {
+        Map<String, Object> raw = new HashMap<>();
+        raw.put("Items", List.of(Map.of("Key", "v1"), Map.of("Key", "v2")));
+        Map<String, Object> wrapped = CaseInsensitiveJsonMap.wrapMap(raw);
+        List<Map<String, Object>> items = (List<Map<String, Object>>) wrapped.get("items");
+        assertThat(items).hasSize(2);
+        assertThat(items.get(0))
+                .containsEntry("KEY", "v1");
+        assertThat(items.get(1))
+                .containsEntry("key", "v2");
+    }
+
+    @Test
+    @DisplayName("CaseInsensitiveJsonMap passes primitives and null through unchanged")
+    void caseInsensitiveJsonMap_primitivePassthrough() {
+        assertThat(CaseInsensitiveJsonMap.wrap(null)).isNull();
+        assertThat(CaseInsensitiveJsonMap.wrap("plain")).isEqualTo("plain");
+        assertThat(CaseInsensitiveJsonMap.wrap(42)).isEqualTo(42);
+    }
+
+    @Test
+    @DisplayName("CaseInsensitiveJsonMap ignores Map entries with null keys")
+    void caseInsensitiveJsonMap_nullKey_skipped() {
+        Map<Object, Object> withNullKey = new HashMap<>();
+        withNullKey.put(null, "ghost");
+        withNullKey.put("real", "kept");
+        @SuppressWarnings("unchecked")
+        Map<String, Object> wrapped =
+                (Map<String, Object>) CaseInsensitiveJsonMap.wrap(withNullKey);
+        assertThat(wrapped).containsOnlyKeys("real");
     }
 
     // ─────────────────────────────────────────────────────────────────
-    // applySourceOverlay — addrDtl branches
+    // Defensive behaviour
     // ─────────────────────────────────────────────────────────────────
 
     @Test
-    @DisplayName("source overlay overlays existing addrDtl group of matching type")
-    void sourceOverlay_addrDtl_overlaysExistingGroup() {
+    @DisplayName("map handles null transaction list / null tranDtl list / null addrDtl list")
+    void map_nullMappingLists_handledGracefully() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        // Common mapping creates a SENDER addr with stLine1
-        mapping.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("sndrAddrLine1", "stLine1", null)))
-        ));
-        // Overlay adds city to the same SENDER group
-        SourceMapping sm = new SourceMapping();
-        sm.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("sndrCityName", "city", null)))
-        ));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrAddrLine1("10 Elm St");
-        txn.setSndrCityName("Springfield");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SRC");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getAddrDtl()).hasSize(1);
-        assertThat(req.getAddrDtl().get(0).getStLine1()).isEqualTo("10 Elm St");
-        assertThat(req.getAddrDtl().get(0).getCity()).isEqualTo("Springfield");
+        mapping.setTranType("SEND");
+        // every list null
+        Map<String, Object> req = engine.map(mapping, source(Map.of()), envelope());
+        assertThat(req)
+                .containsEntry("tranType", "SEND")
+                .doesNotContainKey(CanonicalMappingEngine.SECTION_TRAN_DTL)
+                .doesNotContainKey(CanonicalMappingEngine.SECTION_RECIP_DTL)
+                .doesNotContainKey(CanonicalMappingEngine.SECTION_ADDR_DTL);
     }
 
     @Test
-    @DisplayName("source overlay adds a new addrDtl group when no existing matches")
-    void sourceOverlay_addrDtl_addsNewGroupWhenNoMatchingType() {
+    @DisplayName("safeRead returns null when source map is null")
+    void safeRead_nullSource_returnsNull() {
         EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        mapping.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("sndrAddrLine1", "stLine1", null)))
-        ));
-        SourceMapping sm = new SourceMapping();
-        sm.setAddrDtl(List.of(
-                new AddrDtlGroup("RECIPIENT", List.of(new FieldMapping("rcvrAddrLine1", "stLine1", null)))
-        ));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrAddrLine1("1 Sender Ave");
-        txn.setRcvrAddrLine1("2 Recip Blvd");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SRC");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getAddrDtl()).hasSize(2);
+        mapping.setTranIdSource("tranId");
+        // null txn ⇒ falls back to correlationId
+        assertThat(engine.extractTranId(mapping, null, envelope())).isEqualTo("CORR-1");
     }
 
     @Test
-    @DisplayName("source overlay skips new addrDtl group when none of its fields map successfully")
-    void sourceOverlay_addrDtl_skipsNewGroupWhenNoFieldsMapped() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        mapping.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("sndrAddrLine1", "stLine1", null)))
-        ));
-        SourceMapping sm = new SourceMapping();
-        // RECIPIENT source field is absent in txn → 0 fields mapped → group skipped
-        sm.setAddrDtl(List.of(
-                new AddrDtlGroup("RECIPIENT", List.of(new FieldMapping("rcvrAddrLine1", "stLine1", null)))
-        ));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrAddrLine1("1 Sender Ave");
-        // rcvrAddrLine1 intentionally not set
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SRC");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getAddrDtl()).hasSize(1); // only SENDER, RECIPIENT dropped
+    @DisplayName("source map default LinkedCaseInsensitiveMap wraps deeply nested case variants")
+    @SuppressWarnings("unchecked")
+    void caseInsensitive_deepNesting() {
+        Map<String, Object> raw = new HashMap<>();
+        Map<String, Object> mid = new HashMap<>();
+        Map<String, Object> deep = new HashMap<>();
+        deep.put("LeafKey", "found");
+        mid.put("MidKey", deep);
+        raw.put("OuterKey", mid);
+        Map<String, Object> wrapped = (Map<String, Object>) CaseInsensitiveJsonMap.wrap(raw);
+        Map<String, Object> midRead = (Map<String, Object>) wrapped.get("outerkey");
+        Map<String, Object> deepRead = (Map<String, Object>) midRead.get("MIDKEY");
+        assertThat(deepRead).containsEntry("leafkey", "found");
     }
 
     @Test
-    @DisplayName("source overlay creates addrDtl from scratch when req has none")
-    void sourceOverlay_addrDtl_createsListWhenReqHasNone() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        // No common addrDtl → req.getAddrDtl() will be null before overlay
-        SourceMapping sm = new SourceMapping();
-        sm.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("sndrAddrLine1", "stLine1", null)))
-        ));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setSndrAddrLine1("99 New St");
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SRC");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getAddrDtl()).hasSize(1);
-        assertThat(req.getAddrDtl().get(0).getStLine1()).isEqualTo("99 New St");
-    }
-
-    @Test
-    @DisplayName("source overlay sets addrDtl to null when every new group maps 0 fields and no existing")
-    void sourceOverlay_addrDtl_setsNullWhenAllGroupsEmpty() {
-        EventTypeMapping mapping = new EventTypeMapping();
-        mapping.setTranType("AIS");
-        SourceMapping sm = new SourceMapping();
-        sm.setAddrDtl(List.of(
-                new AddrDtlGroup("SENDER", List.of(new FieldMapping("rcvrAddrLine1", "stLine1", null)))
-        ));
-        mapping.setSourceMappings(java.util.Map.of("SRC", sm));
-
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        // rcvrAddrLine1 not set → 0 fields mapped → result list empty → null
-
-        EventEnvelope env = envelope();
-        env.setEventSource("SRC");
-
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-
-        assertThat(req.getAddrDtl()).isNull();
+    @DisplayName("LinkedCaseInsensitiveMap with explicit locale ensures stable behaviour")
+    void linkedCaseInsensitiveMap_localeBehaviour() {
+        // Spot check: explicit ROOT locale prevents the Turkish "I/ı" trap
+        Map<String, Object> m = new LinkedCaseInsensitiveMap<>(4, Locale.ROOT);
+        m.put("eventId", "EVT-1");
+        assertThat(m).containsEntry("EVENTID", "EVT-1");
     }
 }

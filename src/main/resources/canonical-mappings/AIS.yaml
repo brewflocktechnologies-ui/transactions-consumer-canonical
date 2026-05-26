@@ -1,7 +1,7 @@
 # =============================================================================
 # Canonical mapping: AIS (Account Information Service) event type
 #
-# TransactionEventAxonMessage  →  SendTransactionRequest (canonical object)
+# source JSON payload (Map<String,Object>)  →  canonical payload (Map keyed by metadata jsonName)
 #
 # Nested-field support:
 #   `source:` accepts dot-notation paths to traverse nested JSON blocks
@@ -20,7 +20,7 @@
 
 eventType: AIS
 tranIdSource: accountInformationId   # TxnAxonMessage field used as DB TRAN_ID (falls back to correlationId)
-tranType: AIS                        # literal value for SendTransactionRequest.tranType
+tranType: AIS                        # literal value written to the canonical payload's tranType key
 
 # ---------------------------------------------------------------------------
 # Filtering rules — both checks must pass for the message to be processed.
@@ -39,7 +39,7 @@ eventNames:
   - AIS
 
 # ---------------------------------------------------------------------------
-# Transaction: SendTransactionRequest top-level fields  (SEND_TRANSACTIONS)
+# transaction: parent SEND_TRANSACTIONS top-level fields of the canonical payload
 # ---------------------------------------------------------------------------
 transaction:
   # Core identifiers
@@ -93,7 +93,7 @@ transaction:
   - { source: paymentType,                                 target: useCase }
 
 # ---------------------------------------------------------------------------
-# tranDtl: SendTranDtlRequest  (1:1 child — SEND_TRAN_DTL)
+# tranDtl: 1:1 child section of the canonical payload  (SEND_TRAN_DTL)
 # ---------------------------------------------------------------------------
 tranDtl:
   # Payment leg / references
@@ -148,7 +148,7 @@ tranDtl:
   - { source: msgVersion,                                  target: msgVersion }
 
 # ---------------------------------------------------------------------------
-# recipDtl: SendRecipDtlRequest  (1:1 child — SEND_RECIP_DTL)
+# recipDtl: 1:1 child section of the canonical payload  (SEND_RECIP_DTL)
 # ---------------------------------------------------------------------------
 recipDtl:
   # Sender (SNDR)
@@ -196,7 +196,7 @@ recipDtl:
   - { source: rcvrPostalCd,                                target: recipPostCd }
 
 # ---------------------------------------------------------------------------
-# addrDtl: List<SendTranAddrDtlRequest>  (1:many child — SEND_TRAN_ADDR_DTL)
+# addrDtl: 1:many child list in the canonical payload  (SEND_TRAN_ADDR_DTL)
 # Each group produces one address row. Omitted if all source fields are null.
 # ---------------------------------------------------------------------------
 addrDtl:

@@ -10,6 +10,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 
+import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
@@ -39,7 +40,7 @@ class ControllerTests {
         verify(svc).findById("X-1");
     }
 
-    // ── MetadataTransactionController (v2) ────────────────────────────────
+    // ── MetadataTransactionController (v2) — data endpoint ───────────────
 
     @Test
     void v2_findById_presentReturnsOk() {
@@ -62,6 +63,39 @@ class ControllerTests {
         MetadataTransactionController c = new MetadataTransactionController(svc);
         assertThatThrownBy(() -> c.findById("alias", "missing"))
                 .isInstanceOf(ResourceNotFoundException.class);
+    }
+
+    // ── MetadataTransactionController (v2) — discovery endpoints ─────────
+
+    @Test
+    void v2_listMetadata_returnsOkWithServiceResult() {
+        MetadataTransactionService svc = mock(MetadataTransactionService.class);
+        List<Map<String, Object>> catalog = List.of(
+                Map.of("alias", "send-transactions", "columns", List.of()),
+                Map.of("alias", "send-tran-dtl",     "columns", List.of())
+        );
+        when(svc.listMetadata()).thenReturn(catalog);
+
+        MetadataTransactionController c = new MetadataTransactionController(svc);
+        ResponseEntity<List<Map<String, Object>>> r = c.listMetadata();
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(r.getBody()).isSameAs(catalog);
+        verify(svc).listMetadata();
+    }
+
+    @Test
+    void v2_getMetadata_returnsOkWithServiceResult() {
+        MetadataTransactionService svc = mock(MetadataTransactionService.class);
+        Map<String, Object> view = Map.of("alias", "send-transactions", "columns", List.of());
+        when(svc.getMetadata("send-transactions")).thenReturn(view);
+
+        MetadataTransactionController c = new MetadataTransactionController(svc);
+        ResponseEntity<Map<String, Object>> r = c.getMetadata("send-transactions");
+
+        assertThat(r.getStatusCode()).isEqualTo(HttpStatus.OK);
+        assertThat(r.getBody()).isSameAs(view);
+        verify(svc).getMetadata("send-transactions");
     }
 
     // ── PublishToKafkaController ──────────────────────────────────────────

@@ -1,7 +1,8 @@
 package com.poc.transactions_consumer_canonical.service;
 
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
 import com.poc.transactions_consumer_canonical.dto.SendTransactionResponse;
+
+import java.util.Map;
 
 public interface SendTransactionService {
 
@@ -10,16 +11,27 @@ public interface SendTransactionService {
      * within a single transaction. Invoked exclusively by the Kafka canonical
      * consumer — there is no REST endpoint that calls this method.
      *
-     * Null fields in a request are null-guarded: an existing non-null DB value
-     * is preserved when the incoming value is null.
+     * <p>The {@code canonical} payload mirrors the {@link com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingEngine}
+     * output shape:
      * <ul>
-     *   <li>tranDtl  — present → MERGE into SEND_TRAN_DTL (1:1); null → untouched</li>
-     *   <li>recipDtl — present → MERGE into SEND_RECIP_DTL (1:1); null → untouched</li>
-     *   <li>addrDtl  — null → untouched; [] → delete all; [...] → MERGE each by ID,
-     *                  then prune IDs not present in the incoming list</li>
+     *   <li>Parent column values keyed by {@code jsonName} at the top level</li>
+     *   <li>{@code tranDtl}  → 1:1 child map (optional; absent → untouched)</li>
+     *   <li>{@code recipDtl} → 1:1 child map (optional; absent → untouched)</li>
+     *   <li>{@code addrDtl}  → 1:many child list:
+     *     <ul>
+     *       <li>{@code null} or absent → addresses untouched</li>
+     *       <li>{@code []} → delete all addresses for this {@code tranId}</li>
+     *       <li>{@code [...]} → MERGE each row by id, then prune ids not in the list</li>
+     *     </ul>
+     *   </li>
      * </ul>
+     * Missing field values land in the DB as {@code null} via the COALESCE
+     * null-guard in the generated MERGE SQL — incoming null preserves any
+     * existing non-null DB value.
+     *
+     * @return the persisted full graph (same shape as {@link #findById(String)})
      */
-    SendTransactionResponse upsert(String tranId, SendTransactionRequest request);
+    SendTransactionResponse upsert(String tranId, Map<String, Object> canonical);
 
     /**
      * Returns the full graph: parent + all child rows. Backs the read-only

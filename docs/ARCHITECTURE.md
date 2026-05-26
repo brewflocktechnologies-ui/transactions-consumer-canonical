@@ -87,7 +87,7 @@ The architectural payoff is a measurable reduction in **lead-time-for-change**: 
 
 | Layer | v1 (typed) | v2 (metadata-driven) |
 |---|---|---|
-| Controller | `SendTransactionController` — `@RequestBody SendTransactionRequest` | `MetadataTransactionController` — `@RequestBody Map<String,Object>` |
+| Controller | `SendTransactionController` — read-only `GET /api/v1/send-transactions/{tranId}` returning a typed `SendTransactionResponse` | `MetadataTransactionController` — read-only `GET /api/v2/{alias}/{id}` returning `Map<String,Object>` |
 | Service | `SendTransactionServiceImpl` — orchestrates 4 hand-written repos, has 6 hand-written `toXxxModel` / `toXxxResponse` methods (~300 LOC) | `MetadataTransactionService` — single orchestrator iterating `parent.children` from metadata; no per-table branches |
 | Repository | `Send{Transaction,TranDtl,RecipDtl,TranAddrDtl}RepositoryImpl` — each contains a 60-100 line MERGE SQL string + a `toParams` with explicit `java.sql.Types.*` per column | `GenericTableRepository` — one class; `SqlBuilder` generates MERGE/SELECT/DELETE from `TableMetadata`; `Converters` resolves per-column transformers |
 | Row mapping | 4 hand-written `RowMapper<T>` classes | `GenericRowMapper` — reads each column per its `sqlType` flag, applies `ValueConverter.fromJdbc` |
@@ -111,7 +111,7 @@ A second inbound surface runs alongside the REST APIs. A `@KafkaListener` on the
 │  3. Route        eventName         →  EventTypeMapping  (YAML)       │
 │  4. Evaluate     rules             →  allowedSources / operations    │
 │  5. Sanitize     eventPayload         4-strategy rectification       │
-│  6. Deserialise  eventPayload      →  TransactionEventAxonMessage    │
+│  6. Deserialise  eventPayload      →  Map&lt;String,Object&gt; (case-insens.)│
 │  7. Map fields   (reflection)      →  canonical DTO                  │
 │  8. Persist      to Oracle                                           │
 └──────────────────────────┬───────────────────────────────────────────┘
@@ -138,7 +138,8 @@ A second inbound surface runs alongside the REST APIs. A `@KafkaListener` on the
 | `CanonicalMappingRegistry` | Loads all `classpath:canonical-mappings/*.yaml` at `@PostConstruct`; builds a lookup index by `eventName` and `eventType` |
 | `CanonicalRuleEngine` | Evaluates `rules.allowedEventSources` and `rules.allowedOperations` per mapping; filters messages before payload deserialization |
 | `EventPayloadSanitizer` | Applies four progressive rectification strategies (trim → unwrap double-serialized JSON → lenient re-parse) to the raw `eventPayload` string |
-| `CanonicalMappingEngine` | Reflection-driven field mapper. Reads source fields from `TransactionEventAxonMessage` via `get`/`is` accessors; supports dot-notation nested paths (e.g. `account.eligible`). Coerces `String → BigDecimal / LocalDate / LocalDateTime / Long / Boolean`. Source-specific overlays (`sourceMappings:`) applied last on top of common mappings. |
+| `CanonicalMappingEngine` | Map-based field mapper. Reads source values from the case-insensitive payload `Map` via dot-notation paths (e.g. `account.eligible`) and writes to a canonical `Map<String,Object>` keyed by the `jsonName` of each metadata column. Type coercion happens later at JDBC bind time via `ValueConverter`. Source-specific overlays (`sourceMappings:`) applied last on top of common mappings. |
+| `CaseInsensitiveJsonMap` | Utility that recursively wraps a Jackson-deserialised payload `Map`/`List` tree into `LinkedCaseInsensitiveMap` instances so engine lookups are case-insensitive throughout. |
 | `ClearingEventService` | 5th-table path — verifies the parent `SEND_TRANSACTIONS` row exists, then MERGEs into `SEND_TRAN_CLRG_SETLMT` |
 
 #### YAML-driven event type onboarding
@@ -346,7 +347,7 @@ Concrete example: **add a new column `EXTRA_NOTE VARCHAR2(100)` to `SEND_TRANSAC
 |---|---|---|
 | DDL | DBA migration | DBA migration |
 | Entity | `SendTransaction.java` — add field + `@Column` | (no change) |
-| DTO request | `SendTransactionRequest.java` — add field + `@Size` etc. | (no change) |
+| DTO request | n/a — the Kafka pipeline reads the raw JSON payload as a Map, no intermediate request DTO | (no change) |
 | DTO response | `SendTransactionResponse.java` — add field | (no change) |
 | Mapper | ModelMapper config or MapStruct interface — add mapping (or accept auto-detection) | (no change) |
 | Service | Likely no change, *if* ModelMapper is configured to copy all properties | (no change) |

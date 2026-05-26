@@ -1,13 +1,12 @@
 package com.poc.transactions_consumer_canonical;
 
 import com.poc.transactions_consumer_canonical.canonicalmapping.*;
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
-import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
 import com.poc.transactions_consumer_canonical.metadata.*;
 import org.junit.jupiter.api.Test;
 
 import java.util.List;
+import java.util.Map;
 
 import static org.assertj.core.api.Assertions.assertThat;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
@@ -201,7 +200,7 @@ class CoverageBoostingTests {
     // ────────────────────────────────────────────────────────────────
 
     @Test
-    void coerce_handlesAllPrimitiveTargetTypes() {
+    void map_writesSourceValuesVerbatimToTargetKeys() {
         CanonicalMappingEngine engine = new CanonicalMappingEngine();
         EventEnvelope env = new EventEnvelope();
         env.setEventId("E"); env.setCorrelationId("C"); env.setEventTimestamp(1L);
@@ -209,17 +208,16 @@ class CoverageBoostingTests {
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranType("AIS");
         mapping.setTransaction(List.of(
-                // amount stored as Long → coerce String→Long succeeds; tranAmt → BigDecimal
-                new FieldMapping("amount", "tranAmt", null),
-                // currency is plain String passthrough
-                new FieldMapping("currency", "tranCurr", null)
+                new FieldMapping("amount",   "tranAmt",   null),
+                new FieldMapping("currency", "tranCurr",  null)
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        txn.setAmount(1234L);
-        txn.setCurrency("USD");
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-        assertThat(req.getTranAmt()).isEqualByComparingTo("1234");
-        assertThat(req.getTranCurr()).isEqualTo("USD");
+        Map<String, Object> txn = CaseInsensitiveJsonMap.wrapMap(Map.of(
+                "amount",   "1234",
+                "currency", "USD"));
+        Map<String, Object> req = engine.map(mapping, txn, env);
+        assertThat(req)
+                .containsEntry("tranAmt", "1234")
+                .containsEntry("tranCurr", "USD");
     }
 
     @Test
@@ -369,7 +367,7 @@ class CoverageBoostingTests {
     }
 
     @Test
-    void coerce_booleanSourcePropagates_andZeroFalseHandled() {
+    void map_booleanSourcePropagatesThroughNestedPath() {
         CanonicalMappingEngine engine = new CanonicalMappingEngine();
         EventEnvelope env = new EventEnvelope();
         env.setEventId("E"); env.setCorrelationId("C"); env.setEventTimestamp(1L);
@@ -379,13 +377,9 @@ class CoverageBoostingTests {
         mapping.setTransaction(List.of(
                 new FieldMapping("sendingAccountEligible.eligible", "recipElig", null)
         ));
-        TransactionEventAxonMessage txn = new TransactionEventAxonMessage();
-        var elig = new com.poc.transactions_consumer_canonical.messagesdto.AccountEligibility();
-        elig.setEligible(false);
-        txn.setSendingAccountEligible(elig);
-        SendTransactionRequest req = engine.map(mapping, txn, env);
-        // false → setter not invoked since str trim is "false"; either null or false acceptable.
-        // We just ensure no exception was thrown.
-        assertThat(req).isNotNull();
+        Map<String, Object> txn = CaseInsensitiveJsonMap.wrapMap(
+                Map.of("sendingAccountEligible", Map.of("eligible", false)));
+        Map<String, Object> req = engine.map(mapping, txn, env);
+        assertThat(req).containsEntry("recipElig", false);
     }
 }

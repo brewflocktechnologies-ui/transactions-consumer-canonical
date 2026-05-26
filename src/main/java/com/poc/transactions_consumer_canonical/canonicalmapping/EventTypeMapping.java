@@ -15,8 +15,8 @@ import java.util.Map;
  * eventNames:
  *   - TRANSACTION_INITIATED
  *   - PAYMENT_COMPLETED
- * tranIdSource: tranId          # field on TransactionEventAxonMessage used as DB TRAN_ID
- * tranType:     SEND            # literal value for SendTransactionRequest.tranType
+ * tranIdSource: tranId          # JSON path on the source payload used as DB TRAN_ID
+ * tranType:     SEND            # literal value written to the canonical payload's tranType key
  * transaction:  [ {source,target}, … ]
  * tranDtl:      [ {source,target}, … ]
  * recipDtl:     [ {source,target}, … ]
@@ -48,34 +48,34 @@ public class EventTypeMapping {
     private List<String> eventNames;
 
     /**
-     * Field name on {@code TransactionEventAxonMessage} whose value becomes the
-     * DB {@code TRAN_ID}.  Falls back to {@code EventEnvelope.correlationId} when
-     * the field is null or blank.
+     * Dot-notation path into the source JSON payload whose value becomes the DB
+     * {@code TRAN_ID}.  Falls back to {@code EventEnvelope.correlationId} when
+     * the value is null or blank.
      */
     private String tranIdSource;
 
-    /** Literal value written to {@code SendTransactionRequest.tranType}. */
+    /** Literal value written to the canonical payload's {@code tranType} key. */
     private String tranType;
 
-    /** Mappings into {@code SendTransactionRequest} top-level fields. */
+    /** Mappings into the parent SEND_TRANSACTIONS payload (top-level keys of the canonical map). */
     private List<FieldMapping> transaction;
 
-    /** Mappings into {@code SendTranDtlRequest} (1:1 child). */
+    /** Mappings into the {@code tranDtl} (SEND_TRAN_DTL) child section of the canonical payload. */
     private List<FieldMapping> tranDtl;
 
-    /** Mappings into {@code SendRecipDtlRequest} (1:1 child). */
+    /** Mappings into the {@code recipDtl} (SEND_RECIP_DTL) child section of the canonical payload. */
     private List<FieldMapping> recipDtl;
 
     /**
-     * Address groups for {@code SendTranAddrDtlRequest} (1:many child).
-     * Each group produces one address row.
+     * Address groups for the {@code addrDtl} (SEND_TRAN_ADDR_DTL) 1:many child section.
+     * Each group produces one entry in the addrDtl list of the canonical payload.
      */
     private List<AddrDtlGroup> addrDtl;
 
     /**
-     * Mappings into {@code SendTranClrgSetlmtRequest} (1:1 child, 5th table).
-     * Used by CLEARING and SETTLEMENT events; the standard PAYMENT/FUNDING flows
-     * leave this null.
+     * Mappings into the SEND_TRAN_CLRG_SETLMT (5th-table) payload — used when
+     * {@code pipeline: CLRG_SETLMT} routes the event to {@code ClearingEventService}.
+     * The standard PAYMENT/FUNDING flows leave this null.
      */
     private List<FieldMapping> clrgSetlmt;
 

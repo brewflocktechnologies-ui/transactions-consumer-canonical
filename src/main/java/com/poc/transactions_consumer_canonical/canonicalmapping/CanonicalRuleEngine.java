@@ -7,6 +7,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.util.List;
 
 /**
@@ -124,7 +125,7 @@ public class CanonicalRuleEngine {
             JsonNode root = objectMapper.readTree(eventMetadata);
             JsonNode opNode = root.get("operation");
             return (opNode != null && !opNode.isNull()) ? opNode.asText() : null;
-        } catch (Exception e) {
+        } catch (IOException e) {
             log.warn("[RULE ENGINE] Cannot parse eventMetadata JSON: '{}' — {}",
                     eventMetadata, e.getMessage());
             return null;

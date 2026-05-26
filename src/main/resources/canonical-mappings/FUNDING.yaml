@@ -1,7 +1,7 @@
 # =============================================================================
 # Canonical mapping: FUNDING event type
 #
-# TransactionEventAxonMessage  →  SendTransactionRequest (canonical object)
+# source JSON payload (Map<String,Object>)  →  canonical payload (Map keyed by metadata jsonName)
 #
 # Funding events carry funding-leg amounts, status, and network data.
 # Sender/receiver personal data is the same as for PAYMENT events.
@@ -9,7 +9,7 @@
 
 eventType: FUNDING
 tranIdSource: fundingId       # TxnAxonMessage field used as DB TRAN_ID (falls back to correlationId)
-tranType: FUNDING             # literal value for SendTransactionRequest.tranType
+tranType: FUNDING             # literal value written to the canonical payload's tranType key
 
 # ---------------------------------------------------------------------------
 # Filtering rules — both checks must pass for the message to be processed.
@@ -36,7 +36,7 @@ eventNames:
   - FUNDING_SETTLED
 
 # ---------------------------------------------------------------------------
-# Transaction: SendTransactionRequest top-level fields
+# transaction: parent SEND_TRANSACTIONS top-level fields of the canonical payload
 # ---------------------------------------------------------------------------
 transaction:
   # Core identifiers
@@ -85,7 +85,7 @@ transaction:
   - { source: channel,                     target: useCase }
 
 # ---------------------------------------------------------------------------
-# tranDtl: SendTranDtlRequest  (1:1 child)
+# tranDtl: 1:1 child section of the canonical payload  (SEND_TRAN_DTL)
 # ---------------------------------------------------------------------------
 tranDtl:
   # Funding leg settlement
@@ -127,7 +127,7 @@ tranDtl:
   - { source: cvcResponseDescription,        target: cvcRespDesc }
 
 # ---------------------------------------------------------------------------
-# recipDtl: SendRecipDtlRequest  (1:1 child) — same PII as PAYMENT
+# recipDtl: 1:1 child section of the canonical payload  (SEND_RECIP_DTL) — same PII as PAYMENT
 # ---------------------------------------------------------------------------
 recipDtl:
   # Sender
@@ -169,7 +169,7 @@ recipDtl:
   - { source: rcvrPostalCd,                 target: recipPostCd }
 
 # ---------------------------------------------------------------------------
-# addrDtl: List<SendTranAddrDtlRequest>  (1:many child)
+# addrDtl: 1:many child list in the canonical payload  (SEND_TRAN_ADDR_DTL)
 # ---------------------------------------------------------------------------
 addrDtl:
   - addrType: SENDER

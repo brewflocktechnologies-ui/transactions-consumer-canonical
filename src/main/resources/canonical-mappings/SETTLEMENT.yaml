@@ -7,14 +7,14 @@
 # UPDATE if the row exists, INSERT if not).
 #
 # Flow (identical to CLEARING):
-#   1. KafkaCanonicalConsumer deserialises the payload to TransactionEventAxonMessage
-#   2. CanonicalMappingEngine.applyTo(clrgSetlmt mappings, txn, SendTranClrgSetlmtRequest)
+#   1. KafkaCanonicalConsumer deserialises the payload to a case-insensitive Map<String,Object>
+#   2. CanonicalMappingEngine.applyTo(clrgSetlmt mappings, sourceMap, targetMap)
 #   3. ClearingEventService verifies the parent SEND_TRANSACTIONS row exists,
-#      converts the typed request → Map, MERGEs into SEND_TRAN_CLRG_SETLMT.
+#      then MERGEs the targetMap into SEND_TRAN_CLRG_SETLMT.
 #
 # Source-field renaming workflow:
-#   Just change the `source:` value below. No Java changes required as long as
-#   the source field already exists on TransactionEventAxonMessage.
+#   Just change the `source:` value below. No Java changes required — the engine
+#   reads the source value from the JSON payload by key (case-insensitive).
 #
 # Adding a new column to SEND_TRAN_CLRG_SETLMT:
 #   See the header of CLEARING.yaml — same 4-step process.
@@ -43,9 +43,9 @@ eventNames:
   - SETTLEMENT_REVERSED
 
 # ---------------------------------------------------------------------------
-# clrgSetlmt: SendTranClrgSetlmtRequest (1:1 child, 5th table)
-# source: field on TransactionEventAxonMessage
-# target: field on SendTranClrgSetlmtRequest (= jsonName in send_tran_clrg_setlmt.yaml)
+# clrgSetlmt: payload for SEND_TRAN_CLRG_SETLMT (1:1 child, 5th table)
+# source: JSON path on the source payload (case-insensitive, dot-notation for nested)
+# target: jsonName from metadata/send_tran_clrg_setlmt.yaml
 # ---------------------------------------------------------------------------
 clrgSetlmt:
   # Clearing status — propagated by upstream so the row stays consistent

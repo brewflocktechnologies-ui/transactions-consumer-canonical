@@ -8,17 +8,19 @@ import java.util.List;
 
 /**
  * One address group inside {@code addrDtl} of an {@link EventTypeMapping}.
- * Each group produces one {@link com.poc.transactions_consumer_canonical.dto.SendTranAddrDtlRequest}
- * row (e.g. addrType=SENDER or addrType=RECIPIENT).
+ * Each group produces one entry in the {@code addrDtl} list of the canonical
+ * payload (a {@code Map<String,Object>} keyed by {@code jsonName} from
+ * {@code metadata/send_tran_addr_dtl.yaml}), e.g. {@code addrType=SENDER}
+ * or {@code addrType=RECIPIENT}.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class AddrDtlGroup {
 
-    /** Value written to {@code SendTranAddrDtlRequest.addrType} (e.g. SENDER, RECIPIENT). */
+    /** Address-type discriminator written to {@code addrType} on the row (e.g. SENDER, RECIPIENT). */
     private String addrType;
 
-    /** Field-level mappings from {@code TransactionEventAxonMessage} into the address DTO. */
+    /** Field-level mappings from the source JSON payload into this address entry. */
     private List<FieldMapping> mappings;
 }

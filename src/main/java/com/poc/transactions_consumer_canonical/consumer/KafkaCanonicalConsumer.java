@@ -1,17 +1,16 @@
 package com.poc.transactions_consumer_canonical.consumer;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingEngine;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalMappingRegistry;
 import com.poc.transactions_consumer_canonical.canonicalmapping.CanonicalRuleEngine;
+import com.poc.transactions_consumer_canonical.canonicalmapping.CaseInsensitiveJsonMap;
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventPayloadSanitizer;
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventTypeMapping;
 import com.poc.transactions_consumer_canonical.config.KafkaTopicConfig;
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
-import com.poc.transactions_consumer_canonical.dto.SendTranClrgSetlmtRequest;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
-import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
 import com.poc.transactions_consumer_canonical.service.ClearingEventService;
 import com.poc.transactions_consumer_canonical.service.SendTransactionService;
 import lombok.RequiredArgsConstructor;
@@ -19,6 +18,8 @@ import lombok.extern.slf4j.Slf4j;
 import org.springframework.kafka.annotation.KafkaListener;
 import org.springframework.stereotype.Component;
 
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.Optional;
 
 /**
@@ -30,10 +31,14 @@ import java.util.Optional;
  *  3. Route by eventName             →  EventTypeMapping  (YAML-driven)
  *  4. Evaluate rules                 →  allowedEventSources / allowedOperations
  *  5. Validate &amp; sanitize payload   →  rectify common JSON issues or skip
- *  6. Deserialise eventPayload       →  TransactionEventAxonMessage
- *  7. CanonicalMappingEngine.map()   →  SendTransactionRequest
- *  8. SendTransactionService.upsert()→  Oracle DB
+ *  6. Deserialise eventPayload       →  Map&lt;String,Object&gt; (case-insensitive)
+ *  7. CanonicalMappingEngine.map()   →  canonical Map&lt;String,Object&gt;
+ *  8. Persist                        →  SendTransactionService.upsert / ClearingEventService
  * </pre>
+ *
+ * <p>The Kafka pipeline operates entirely on {@code Map<String,Object>} — there are
+ * no intermediate typed source / request POJOs. Adding a new column or event type
+ * is a YAML-only change.
  *
  * <p>Steps 3–5 all run <em>before</em> full payload deserialization so that
  * unroutable, rule-blocked, or malformed messages are discarded with minimal cost.
@@ -48,6 +53,8 @@ public class KafkaCanonicalConsumer {
 
     private static final String PIPELINE_CLRG_SETLMT  = "CLRG_SETLMT";
     private static final String SETTLEMENT_EVENT_TYPE = "SETTLEMENT";
+
+    private static final TypeReference<Map<String, Object>> MAP_TYPE = new TypeReference<>() { };
 
     private final ObjectMapper              objectMapper;
     private final CanonicalMappingRegistry  mappingRegistry;
@@ -103,8 +110,6 @@ public class KafkaCanonicalConsumer {
         }
 
         // ── Step 5: validate & sanitize eventPayload ─────────────────────────
-        // Attempts four progressive rectification strategies (trim → unwrap →
-        // lenient re-parse). Returns empty if the payload is irrecoverable.
         Optional<String> sanitized = payloadSanitizer.sanitize(envelope.getEventPayload());
         if (sanitized.isEmpty()) {
             log.warn("[CONSUMER]  eventPayload is invalid and cannot be rectified — skipping | "
@@ -112,38 +117,34 @@ public class KafkaCanonicalConsumer {
             log.info(OUTER_SEPARATOR);
             return;
         }
-        // Apply the (potentially rectified) payload back — no-op when unchanged
         envelope.setEventPayload(sanitized.get());
 
-        // ── Step 6: deserialise TransactionEventAxonMessage (payload) ─────────
-        TransactionEventAxonMessage txn = deserialisePayload(envelope);
-        if (txn == null) return;
-
+        // ── Step 6: deserialise payload as case-insensitive Map ──────────────
+        Optional<Map<String, Object>> txnOpt = deserialisePayload(envelope);
+        if (txnOpt.isEmpty()) return;
+        Map<String, Object> txn = txnOpt.get();
         logTransaction(txn);
 
-        // ── pipeline: CLRG_SETLMT branch (dual-message 2nd/3rd leg) ─────────
-        // Any event whose YAML declares `pipeline: CLRG_SETLMT` bypasses the
-        // standard SendTransactionRequest path. Adding a new 5th-table event
-        // type only requires a new YAML file — no Java change needed here.
+        // ── pipeline: CLRG_SETLMT branch ─────────────────────────────────────
         if (PIPELINE_CLRG_SETLMT.equalsIgnoreCase(mapping.getPipeline())) {
             handleClrgSetlmtEvent(mapping, txn, envelope);
             log.info(OUTER_SEPARATOR);
             return;
         }
 
-        // ── Step 7: apply field mappings → canonical SendTransactionRequest ───
+        // ── Step 7: apply field mappings → canonical Map ─────────────────────
         String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
-        SendTransactionRequest canonicalReq = mappingEngine.map(mapping, txn, envelope);
+        Map<String, Object> canonical = mappingEngine.map(mapping, txn, envelope);
 
-        log.info("[CONSUMER]  Canonical request built | tranId={} tranType={} curStat={} tranAmt={}",
-                tranId, canonicalReq.getTranType(), canonicalReq.getCurStat(), canonicalReq.getTranAmt());
+        log.info("[CONSUMER]  Canonical map built | tranId={} tranType={} curStat={} tranAmt={}",
+                tranId, canonical.get("tranType"), canonical.get("curStat"), canonical.get("tranAmt"));
 
         // ── Step 8: persist to Oracle DB ─────────────────────────────────────
         try {
-            sendTransactionService.upsert(tranId, canonicalReq);
+            sendTransactionService.upsert(tranId, canonical);
             log.info("[CONSUMER]  Saved to DB successfully | tranId={} eventType={}",
                     tranId, mapping.getEventType());
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("[CONSUMER]  DB upsert failed | tranId={} eventType={} error={}",
                     tranId, mapping.getEventType(), e.getMessage(), e);
         }
@@ -164,39 +165,37 @@ public class KafkaCanonicalConsumer {
     }
 
     private void handleClrgSetlmtEvent(EventTypeMapping mapping,
-                                       TransactionEventAxonMessage txn,
+                                       Map<String, Object> txn,
                                        EventEnvelope envelope) {
         String eventType = mapping.getEventType();
         String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
-        SendTranClrgSetlmtRequest req = mappingEngine.applyTo(
-                mapping.getClrgSetlmt(), txn, new SendTranClrgSetlmtRequest());
-        req.setTranId(tranId);
+        Map<String, Object> payload = mappingEngine.applyTo(
+                mapping.getClrgSetlmt(), txn, new LinkedHashMap<>());
 
-        log.info("[CONSUMER]  {} request built | tranId={} clrgSt={} setlAmt={}",
-                eventType, tranId, req.getClrgSt(), req.getSetlAmt());
+        log.info("[CONSUMER]  {} payload built | tranId={} clrgSt={} setlAmt={}",
+                eventType, tranId, payload.get("clrgSt"), payload.get("setlAmt"));
 
         try {
             if (SETTLEMENT_EVENT_TYPE.equalsIgnoreCase(eventType)) {
-                clearingEventService.upsertSettlement(req);
+                clearingEventService.upsertSettlement(tranId, payload);
             } else {
-                clearingEventService.upsertClearing(req);
+                clearingEventService.upsertClearing(tranId, payload);
             }
             log.info("[CONSUMER]  {} processing complete | tranId={}", eventType, tranId);
-        } catch (Exception e) {
+        } catch (RuntimeException e) {
             log.error("[CONSUMER]  {} upsert failed | tranId={} error={}",
                     eventType, tranId, e.getMessage(), e);
         }
     }
 
-    private TransactionEventAxonMessage deserialisePayload(EventEnvelope envelope) {
+    private Optional<Map<String, Object>> deserialisePayload(EventEnvelope envelope) {
         try {
-            return objectMapper.readValue(envelope.getEventPayload(),
-                    TransactionEventAxonMessage.class);
+            Map<String, Object> raw = objectMapper.readValue(envelope.getEventPayload(), MAP_TYPE);
+            return Optional.of(CaseInsensitiveJsonMap.wrapMap(raw));
         } catch (JsonProcessingException e) {
-            log.error("[CONSUMER]  Failed to deserialise TransactionEventAxonMessage: {}",
-                    e.getMessage());
+            log.error("[CONSUMER]  Failed to deserialise eventPayload as JSON object: {}", e.getMessage());
             log.info(OUTER_SEPARATOR);
-            return null;
+            return Optional.empty();
         }
     }
 
@@ -213,22 +212,28 @@ public class KafkaCanonicalConsumer {
         log.info("  ignore           : {}", e.isIgnore());
     }
 
-    private void logTransaction(TransactionEventAxonMessage txn) {
+    /**
+     * Logs a short summary of the deserialised payload. Field names listed below
+     * are common across known producers — missing keys simply log as {@code null},
+     * matching the case-insensitive lookup behaviour used downstream.
+     */
+    private void logTransaction(Map<String, Object> txn) {
         log.info(INNER_SEPARATOR);
-        log.info("[CONSUMER]  TransactionEventAxonMessage");
-        log.info("  tranId              : {}", txn.getTranId());
-        log.info("  tranAmt             : {}", txn.getTranAmt());
-        log.info("  tranAmtCurr         : {}", txn.getTranAmtCurr());
-        log.info("  status              : {}", txn.getStatus());
-        log.info("  fundingStatus       : {}", txn.getFundingStatus());
-        log.info("  fundingId           : {}", txn.getFundingId());
-        log.info("  networkCode         : {}", txn.getNetworkCode());
-        log.info("  fundingNetworkCode  : {}", txn.getFundingNetworkCode());
-        log.info("  sndrFirstName       : {}", txn.getSndrFirstName());
-        log.info("  sndrLastName        : {}", txn.getSndrLastName());
-        log.info("  rcvrFirstName       : {}", txn.getRcvrFirstName());
-        log.info("  rcvrLastName        : {}", txn.getRcvrLastName());
-        log.info("  originatingInstId   : {}", txn.getOriginatingInstId());
-        log.info("  channel             : {}", txn.getChannel());
+        log.info("[CONSUMER]  eventPayload (deserialised)");
+        log.info("  tranId              : {}", txn.get("tranId"));
+        log.info("  tranAmt             : {}", txn.get("tranAmt"));
+        log.info("  tranAmtCurr         : {}", txn.get("tranAmtCurr"));
+        log.info("  status              : {}", txn.get("status"));
+        log.info("  fundingStatus       : {}", txn.get("fundingStatus"));
+        log.info("  fundingId           : {}", txn.get("fundingId"));
+        log.info("  networkCode         : {}", txn.get("networkCode"));
+        log.info("  fundingNetworkCode  : {}", txn.get("fundingNetworkCode"));
+        log.info("  sndrFirstName       : {}", txn.get("sndrFirstName"));
+        log.info("  sndrLastName        : {}", txn.get("sndrLastName"));
+        log.info("  rcvrFirstName       : {}", txn.get("rcvrFirstName"));
+        log.info("  rcvrLastName        : {}", txn.get("rcvrLastName"));
+        log.info("  originatingInstId   : {}", txn.get("originatingInstId"));
+        log.info("  channel             : {}", txn.get("channel"));
     }
+
 }

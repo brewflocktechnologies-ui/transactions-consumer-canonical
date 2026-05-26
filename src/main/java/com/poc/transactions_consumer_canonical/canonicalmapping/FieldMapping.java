@@ -5,29 +5,35 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 /**
- * One field-level rule: read {@code source} from {@link com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage}
- * and write to {@code target} on the canonical DTO.
+ * One field-level mapping rule: read {@code source} from the incoming JSON payload
+ * (as a case-insensitive {@code Map<String,Object>}) and write the value under
+ * {@code target} on the canonical payload {@code Map}.
  *
- * <p>{@code converter} is optional.  When absent the engine auto-coerces the
- * value based on the setter's parameter type (String→BigDecimal, String→LocalDate …).
- * Supported explicit converter values:
- * <ul>
- *   <li>{@code STRING_TO_DECIMAL}  — String → BigDecimal</li>
- *   <li>{@code STRING_TO_DATE}     — String (yyyy-MM-dd or ISO) → LocalDate</li>
- *   <li>{@code STRING_TO_DATETIME} — String (ISO) → LocalDateTime</li>
- * </ul>
+ * <p>The {@code source} path supports dot notation for nested JSON objects
+ * (e.g. {@code "sendingAccountEligible.eligible"} resolves
+ * {@code payload.get("sendingAccountEligible").get("eligible")}).
+ * The {@code target} corresponds to the {@code jsonName} of a column in
+ * {@code metadata/*.yaml} — the persistence layer ({@code GenericTableRepository})
+ * looks up the column by that name and applies the {@code converter}/{@code sqlType}
+ * defined in the metadata at JDBC bind time.
  */
 @Data
 @NoArgsConstructor
 @AllArgsConstructor
 public class FieldMapping {
 
-    /** Getter-reachable field name on {@code TransactionEventAxonMessage}. */
+    /** Dot-notation path into the source JSON payload (case-insensitive lookup). */
     private String source;
 
-    /** Setter-reachable field name on the target canonical DTO. */
+    /** Target key in the canonical payload — matches a {@code jsonName} from {@code metadata/*.yaml}. */
     private String target;
 
-    /** Optional converter hint.  Auto-coercion is used when absent. */
+    /**
+     * Optional converter hint, retained for backwards-compatible YAML parsing.
+     * Type coercion is performed at JDBC bind time by
+     * {@link com.poc.transactions_consumer_canonical.repository.ValueConverter},
+     * driven off the column's {@code sqlType} and {@code converter} from
+     * {@code metadata/*.yaml}; this field is not consulted by the runtime engine.
+     */
     private String converter;
 }

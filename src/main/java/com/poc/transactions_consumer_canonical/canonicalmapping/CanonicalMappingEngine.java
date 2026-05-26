@@ -1,38 +1,47 @@
 package com.poc.transactions_consumer_canonical.canonicalmapping;
 
-import com.poc.transactions_consumer_canonical.dto.SendRecipDtlRequest;
-import com.poc.transactions_consumer_canonical.dto.SendTranAddrDtlRequest;
-import com.poc.transactions_consumer_canonical.dto.SendTranDtlRequest;
-import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
-import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
-import java.lang.reflect.Method;
-import java.math.BigDecimal;
 import java.time.Instant;
-import java.time.LocalDate;
 import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 
 /**
- * Applies an {@link EventTypeMapping} to a {@link TransactionEventAxonMessage}
- * and produces a fully-populated {@link SendTransactionRequest} (the canonical object).
+ * Applies an {@link EventTypeMapping} to a JSON-shaped {@code Map<String,Object>}
+ * (the deserialised event payload, recursively wrapped case-insensitively) and produces
+ * the canonical persistence payload, also a {@code Map<String,Object>}:
+ *
+ * <pre>
+ * {
+ *   "tranId":    "...", "tranAmt": "...", "tranType": "...",  // parent fields
+ *   "tranDtl":   { ... },                                     // 1:1 child
+ *   "recipDtl":  { ... },                                     // 1:1 child
+ *   "addrDtl":   [ { ... }, { ... } ]                         // 1:many child
+ * }
+ * </pre>
  *
  * <h3>Field mapping</h3>
  * For each {@link FieldMapping}:
  * <ol>
- *   <li>Read the value via the named getter on {@code TransactionEventAxonMessage}.</li>
- *   <li>Auto-coerce it to the setter's declared parameter type
- *       (String→BigDecimal, String→LocalDate, String→LocalDateTime, String→Long …).</li>
- *   <li>Write the coerced value via the named setter on the target DTO.</li>
+ *   <li>Read the value from the source map via the {@code source} path
+ *       ({@code account.eligible} traverses nested maps). Key lookup is
+ *       case-insensitive throughout.</li>
+ *   <li>Write the value verbatim into the target map under the {@code target}
+ *       key — the {@code target} corresponds to the {@code jsonName} of a column
+ *       in {@code metadata/*.yaml}.</li>
  * </ol>
- * Null or blank source values are silently skipped.
- * Unresolvable getters/setters are logged at DEBUG and skipped.
+ *
+ * <p>Type coercion (String → BigDecimal/LocalDate/etc.) is deferred to
+ * {@link com.poc.transactions_consumer_canonical.repository.ValueConverter}
+ * at JDBC bind time. Null or blank source values are silently skipped —
+ * missing fields therefore land in the DB as {@code null} via the COALESCE
+ * null-guard in the generated MERGE SQL.
  *
  * <h3>Fixed fields (always set)</h3>
  * <ul>
@@ -40,6 +49,7 @@ import java.util.Map;
  *   <li>{@code tranCrteDt} — derived from {@code EventEnvelope.eventTimestamp} (epoch-millis → UTC)</li>
  *   <li>{@code crteUserNam} / {@code updtUserNam} — "SYSTEM"</li>
  *   <li>{@code tranDtl.eventId}, {@code eventTs}, {@code eventCorltnId} — envelope metadata</li>
+ *   <li>{@code nonFinTxn} — defaults to {@code false} (financial txn) on the parent unless overridden</li>
  * </ul>
  */
 @Slf4j
@@ -48,6 +58,21 @@ public class CanonicalMappingEngine {
 
     private static final String SYSTEM_USER = "SYSTEM";
 
+    private static final String KEY_TRAN_TYPE       = "tranType";
+    private static final String KEY_TRAN_CRTE_DT    = "tranCrteDt";
+    private static final String KEY_CRTE_USER_NAM   = "crteUserNam";
+    private static final String KEY_UPDT_USER_NAM   = "updtUserNam";
+    private static final String KEY_NON_FIN_TXN     = "nonFinTxn";
+    private static final String KEY_EVENT_ID        = "eventId";
+    private static final String KEY_EVENT_TS        = "eventTs";
+    private static final String KEY_EVENT_CORLTN_ID = "eventCorltnId";
+    private static final String KEY_ADDR_TYPE       = "addrType";
+
+    /** Top-level keys reserved for the 1:1 / 1:many child sections in the canonical payload. */
+    public static final String SECTION_TRAN_DTL  = "tranDtl";
+    public static final String SECTION_RECIP_DTL = "recipDtl";
+    public static final String SECTION_ADDR_DTL  = "addrDtl";
+
     // ── Public API ────────────────────────────────────────────────────────────
 
     /**
@@ -55,7 +80,7 @@ public class CanonicalMappingEngine {
      * falling back to {@code EventEnvelope.correlationId}.
      */
     public String extractTranId(EventTypeMapping mapping,
-                                TransactionEventAxonMessage txn,
+                                Map<String, Object> txn,
                                 EventEnvelope envelope) {
         String source = mapping.getTranIdSource();
         if (source != null && !source.isBlank()) {
@@ -69,72 +94,87 @@ public class CanonicalMappingEngine {
     }
 
     /**
-     * Applies the full {@link EventTypeMapping} and returns a populated
-     * {@link SendTransactionRequest} ready to be passed to
-     * {@code SendTransactionService.upsert()}.
+     * Applies the full {@link EventTypeMapping} and returns the canonical
+     * {@code Map<String,Object>} payload (parent fields at top, nested children
+     * under {@code tranDtl} / {@code recipDtl} / {@code addrDtl}).
      */
-    public SendTransactionRequest map(EventTypeMapping mapping,
-                                     TransactionEventAxonMessage txn,
-                                     EventEnvelope envelope) {
+    public Map<String, Object> map(EventTypeMapping mapping,
+                                   Map<String, Object> txn,
+                                   EventEnvelope envelope) {
 
         LocalDateTime eventDt = epochToUtc(envelope.getEventTimestamp());
 
         // ── Parent ────────────────────────────────────────────────────────────
-        SendTransactionRequest req = new SendTransactionRequest();
-        req.setTranType(mapping.getTranType());
-        req.setTranCrteDt(eventDt);
-        req.setCrteUserNam(SYSTEM_USER);
-        req.setUpdtUserNam(SYSTEM_USER);
-        req.setNonFinTxn(false); // DB column is NOT NULL; default to 0 (financial txn) unless overridden by YAML mapping
-        applyMappings(mapping.getTransaction(), txn, req);
+        Map<String, Object> parent = newSection();
+        parent.put(KEY_TRAN_TYPE, mapping.getTranType());
+        parent.put(KEY_TRAN_CRTE_DT, eventDt);
+        parent.put(KEY_CRTE_USER_NAM, SYSTEM_USER);
+        parent.put(KEY_UPDT_USER_NAM, SYSTEM_USER);
+        parent.put(KEY_NON_FIN_TXN, false);
+        applyMappings(mapping.getTransaction(), txn, parent);
 
-        // ── SendTranDtlRequest (1:1 child) ────────────────────────────────────
+        // ── tranDtl (1:1 child) ───────────────────────────────────────────────
         if (hasEntries(mapping.getTranDtl())) {
-            SendTranDtlRequest dtl = new SendTranDtlRequest();
-            dtl.setTranCrteDt(eventDt);
-            dtl.setEventId(envelope.getEventId());
-            dtl.setEventTs(eventDt);
-            dtl.setEventCorltnId(envelope.getCorrelationId());
-            dtl.setCrteUserNam(SYSTEM_USER);
-            dtl.setUpdtUserNam(SYSTEM_USER);
+            Map<String, Object> dtl = newTranDtlSection(eventDt, envelope);
             applyMappings(mapping.getTranDtl(), txn, dtl);
-            req.setTranDtl(dtl);
+            parent.put(SECTION_TRAN_DTL, dtl);
         }
 
-        // ── SendRecipDtlRequest (1:1 child) ───────────────────────────────────
+        // ── recipDtl (1:1 child) ──────────────────────────────────────────────
         if (hasEntries(mapping.getRecipDtl())) {
-            SendRecipDtlRequest recip = new SendRecipDtlRequest();
-            recip.setTranCrteDt(eventDt);
-            recip.setCrteUserNam(SYSTEM_USER);
-            recip.setUpdtUserNam(SYSTEM_USER);
+            Map<String, Object> recip = newRecipDtlSection(eventDt);
             applyMappings(mapping.getRecipDtl(), txn, recip);
-            req.setRecipDtl(recip);
+            parent.put(SECTION_RECIP_DTL, recip);
         }
 
-        // ── SendTranAddrDtlRequest (1:many child) ─────────────────────────────
+        // ── addrDtl (1:many child) ────────────────────────────────────────────
         if (hasEntries(mapping.getAddrDtl())) {
-            List<SendTranAddrDtlRequest> addrs = new ArrayList<>();
+            List<Map<String, Object>> addrs = new ArrayList<>();
             for (AddrDtlGroup group : mapping.getAddrDtl()) {
-                SendTranAddrDtlRequest addr = new SendTranAddrDtlRequest();
-                addr.setAddrType(group.getAddrType());
-                addr.setCrteUserNam(SYSTEM_USER);
-                addr.setUpdtUserNam(SYSTEM_USER);
+                Map<String, Object> addr = newAddrDtlSection(group.getAddrType());
                 int mapped = applyMappings(group.getMappings(), txn, addr);
-                // Only include an address entry if at least one content field was populated
-                if (mapped > 0) {
-                    addrs.add(addr);
-                }
+                if (mapped > 0) addrs.add(addr);
             }
-            req.setAddrDtl(addrs.isEmpty() ? null : addrs);
+            if (!addrs.isEmpty()) parent.put(SECTION_ADDR_DTL, addrs);
         }
 
-        // ── Source-specific overlay ────────────────────────────────────────────
+        // ── Source-specific overlay ──────────────────────────────────────────
         SourceMapping sm = resolveSourceMapping(mapping.getSourceMappings(), envelope.getEventSource());
         if (sm != null) {
-            applySourceOverlay(sm, txn, req, eventDt, envelope);
+            applySourceOverlay(sm, txn, parent, eventDt, envelope);
         }
+        return parent;
+    }
 
-        return req;
+    /**
+     * Section factory for new {@code tranDtl} child maps — pre-populates the
+     * envelope-derived audit fields shared by the main mapping and source overlay paths.
+     */
+    private Map<String, Object> newTranDtlSection(LocalDateTime eventDt, EventEnvelope envelope) {
+        Map<String, Object> dtl = newSection();
+        dtl.put(KEY_TRAN_CRTE_DT, eventDt);
+        dtl.put(KEY_EVENT_ID, envelope.getEventId());
+        dtl.put(KEY_EVENT_TS, eventDt);
+        dtl.put(KEY_EVENT_CORLTN_ID, envelope.getCorrelationId());
+        dtl.put(KEY_CRTE_USER_NAM, SYSTEM_USER);
+        dtl.put(KEY_UPDT_USER_NAM, SYSTEM_USER);
+        return dtl;
+    }
+
+    private Map<String, Object> newRecipDtlSection(LocalDateTime eventDt) {
+        Map<String, Object> recip = newSection();
+        recip.put(KEY_TRAN_CRTE_DT, eventDt);
+        recip.put(KEY_CRTE_USER_NAM, SYSTEM_USER);
+        recip.put(KEY_UPDT_USER_NAM, SYSTEM_USER);
+        return recip;
+    }
+
+    private Map<String, Object> newAddrDtlSection(String addrType) {
+        Map<String, Object> addr = newSection();
+        addr.put(KEY_ADDR_TYPE, addrType);
+        addr.put(KEY_CRTE_USER_NAM, SYSTEM_USER);
+        addr.put(KEY_UPDT_USER_NAM, SYSTEM_USER);
+        return addr;
     }
 
     /**
@@ -151,81 +191,73 @@ public class CanonicalMappingEngine {
     }
 
     /**
-     * Applies source-specific mappings on top of already-populated DTOs.
+     * Applies source-specific mappings on top of already-populated child sections.
      * Missing source fields in the JSON are silently skipped (target retains its value).
      */
     private void applySourceOverlay(SourceMapping sm,
-                                    TransactionEventAxonMessage txn,
-                                    SendTransactionRequest req,
+                                    Map<String, Object> txn,
+                                    Map<String, Object> parent,
                                     LocalDateTime eventDt,
                                     EventEnvelope envelope) {
-        if (hasEntries(sm.getTransaction())) applyMappings(sm.getTransaction(), txn, req);
-        if (hasEntries(sm.getTranDtl()))     overlayTranDtl(sm, txn, req, eventDt, envelope);
-        if (hasEntries(sm.getRecipDtl()))    overlayRecipDtl(sm, txn, req, eventDt);
-        if (hasEntries(sm.getAddrDtl()))     overlayAddrDtl(sm, txn, req);
+        if (hasEntries(sm.getTransaction())) applyMappings(sm.getTransaction(), txn, parent);
+        if (hasEntries(sm.getTranDtl()))     overlayTranDtl(sm, txn, parent, eventDt, envelope);
+        if (hasEntries(sm.getRecipDtl()))    overlayRecipDtl(sm, txn, parent, eventDt);
+        if (hasEntries(sm.getAddrDtl()))     overlayAddrDtl(sm, txn, parent);
     }
 
+    @SuppressWarnings("unchecked")
     private void overlayTranDtl(SourceMapping sm,
-                                TransactionEventAxonMessage txn,
-                                SendTransactionRequest req,
+                                Map<String, Object> txn,
+                                Map<String, Object> parent,
                                 LocalDateTime eventDt,
                                 EventEnvelope envelope) {
-        SendTranDtlRequest dtl = req.getTranDtl();
+        Map<String, Object> dtl = (Map<String, Object>) parent.get(SECTION_TRAN_DTL);
         if (dtl == null) {
-            dtl = new SendTranDtlRequest();
-            dtl.setTranCrteDt(eventDt);
-            dtl.setEventId(envelope.getEventId());
-            dtl.setEventTs(eventDt);
-            dtl.setEventCorltnId(envelope.getCorrelationId());
-            dtl.setCrteUserNam(SYSTEM_USER);
-            dtl.setUpdtUserNam(SYSTEM_USER);
-            req.setTranDtl(dtl);
+            dtl = newTranDtlSection(eventDt, envelope);
+            parent.put(SECTION_TRAN_DTL, dtl);
         }
         applyMappings(sm.getTranDtl(), txn, dtl);
     }
 
+    @SuppressWarnings("unchecked")
     private void overlayRecipDtl(SourceMapping sm,
-                                 TransactionEventAxonMessage txn,
-                                 SendTransactionRequest req,
+                                 Map<String, Object> txn,
+                                 Map<String, Object> parent,
                                  LocalDateTime eventDt) {
-        SendRecipDtlRequest recip = req.getRecipDtl();
+        Map<String, Object> recip = (Map<String, Object>) parent.get(SECTION_RECIP_DTL);
         if (recip == null) {
-            recip = new SendRecipDtlRequest();
-            recip.setTranCrteDt(eventDt);
-            recip.setCrteUserNam(SYSTEM_USER);
-            recip.setUpdtUserNam(SYSTEM_USER);
-            req.setRecipDtl(recip);
+            recip = newRecipDtlSection(eventDt);
+            parent.put(SECTION_RECIP_DTL, recip);
         }
         applyMappings(sm.getRecipDtl(), txn, recip);
     }
 
+    @SuppressWarnings("unchecked")
     private void overlayAddrDtl(SourceMapping sm,
-                                TransactionEventAxonMessage txn,
-                                SendTransactionRequest req) {
-        List<SendTranAddrDtlRequest> addrs = req.getAddrDtl() != null
-                ? new ArrayList<>(req.getAddrDtl())
+                                Map<String, Object> txn,
+                                Map<String, Object> parent) {
+        List<Map<String, Object>> addrs = parent.get(SECTION_ADDR_DTL) instanceof List<?> list
+                ? new ArrayList<>((List<Map<String, Object>>) list)
                 : new ArrayList<>();
         for (AddrDtlGroup group : sm.getAddrDtl()) {
             overlayAddrDtlGroup(group, txn, addrs);
         }
-        req.setAddrDtl(addrs.isEmpty() ? null : addrs);
+        if (addrs.isEmpty()) parent.remove(SECTION_ADDR_DTL);
+        else                 parent.put(SECTION_ADDR_DTL, addrs);
     }
 
     private void overlayAddrDtlGroup(AddrDtlGroup group,
-                                     TransactionEventAxonMessage txn,
-                                     List<SendTranAddrDtlRequest> addrs) {
+                                     Map<String, Object> txn,
+                                     List<Map<String, Object>> addrs) {
         final String addrType = group.getAddrType();
-        SendTranAddrDtlRequest existing = addrs.stream()
-                .filter(a -> addrType.equalsIgnoreCase(a.getAddrType()))
+        Map<String, Object> existing = addrs.stream()
+                .filter(a -> addrType.equalsIgnoreCase(String.valueOf(a.get(KEY_ADDR_TYPE))))
                 .findFirst()
                 .orElse(null);
         if (existing != null) {
             applyMappings(group.getMappings(), txn, existing);
         } else {
-            SendTranAddrDtlRequest addr = new SendTranAddrDtlRequest();
-            addr.setAddrType(addrType);
-            addr.setCrteUserNam(SYSTEM_USER);
-            addr.setUpdtUserNam(SYSTEM_USER);
+            Map<String, Object> addr = newAddrDtlSection(addrType);
             if (applyMappings(group.getMappings(), txn, addr) > 0) {
                 addrs.add(addr);
             }
@@ -235,16 +267,17 @@ public class CanonicalMappingEngine {
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
     /**
-     * Generic field-mapping entry point — applies {@code mappings} from any
-     * reflection-readable {@code source} POJO to any reflection-writable
-     * {@code target} POJO. Returns the populated target for fluent use.
+     * Generic field-mapping entry point — applies {@code mappings} from the source
+     * payload to any {@code Map<String,Object>} target. Returns the populated
+     * target for fluent use.
      *
-     * <p>Used by the CLEARING / SETTLEMENT flows to drive
-     * {@link com.poc.transactions_consumer_canonical.dto.SendTranClrgSetlmtRequest}
-     * directly from {@link TransactionEventAxonMessage} via the
-     * {@code clrgSetlmt:} block in the event YAML.
+     * <p>Used by the CLEARING / SETTLEMENT flows to drive the 5th-table
+     * ({@code SEND_TRAN_CLRG_SETLMT}) payload directly from the event JSON via
+     * the {@code clrgSetlmt:} block in the event YAML.
      */
-    public <T> T applyTo(List<FieldMapping> mappings, Object source, T target) {
+    public Map<String, Object> applyTo(List<FieldMapping> mappings,
+                                       Map<String, Object> source,
+                                       Map<String, Object> target) {
         applyMappings(mappings, source, target);
         return target;
     }
@@ -255,18 +288,16 @@ public class CanonicalMappingEngine {
      * @return number of fields that were successfully written
      */
     private int applyMappings(List<FieldMapping> mappings,
-                               Object source,
-                               Object target) {
+                              Map<String, Object> source,
+                              Map<String, Object> target) {
         if (mappings == null) return 0;
         int count = 0;
         for (FieldMapping fm : mappings) {
             try {
                 Object value = safeRead(source, fm.getSource());
-                String str = value == null ? "" : value.toString().trim();
-                if (str.isEmpty()) continue;
-
-                boolean written = writeField(target, fm.getTarget(), value);
-                if (written) count++;
+                if (isNullOrBlank(value)) continue;
+                target.put(fm.getTarget(), value);
+                count++;
             } catch (RuntimeException e) {
                 log.debug("[ENGINE] Skipped mapping {}->{}: {}", fm.getSource(), fm.getTarget(), e.getMessage());
             }
@@ -274,111 +305,44 @@ public class CanonicalMappingEngine {
         return count;
     }
 
-    // ── Reflection helpers ────────────────────────────────────────────────────
+    /** Returns true when {@code value} is null or a blank String — both are skipped during mapping. */
+    private static boolean isNullOrBlank(Object value) {
+        if (value == null) return true;
+        return value instanceof String s && s.trim().isEmpty();
+    }
+
+    // ── Map traversal ─────────────────────────────────────────────────────────
 
     /**
-     * Reads {@code path} from {@code source}, traversing nested objects via
-     * dot notation. For example {@code "sendingAccountEligible.eligible"}
-     * is resolved as {@code source.getSendingAccountEligible().getEligible()}.
-     * Each segment supports both {@code getXxx()} and {@code isXxx()} accessors.
-     * Returns {@code null} at the first null segment or unresolvable getter.
+     * Reads {@code path} from the source {@code Map}, traversing nested objects
+     * via dot notation. For example {@code "sendingAccountEligible.eligible"}
+     * is resolved as {@code source.get("sendingAccountEligible").get("eligible")}.
+     * Returns {@code null} at the first null segment or non-{@link Map} segment.
+     *
+     * <p>Source maps are expected to be {@code LinkedCaseInsensitiveMap} instances
+     * (wrapped at the consumer boundary via
+     * {@link CaseInsensitiveJsonMap#wrapMap(Map)}), so lookups are
+     * case-insensitive by construction.
      */
-    private Object safeRead(Object source, String path) {
+    private Object safeRead(Map<String, Object> source, String path) {
         if (source == null || path == null || path.isBlank()) return null;
 
         Object current = source;
         for (String segment : path.split("\\.")) {
-            if (current == null) return null;
-            current = readSingle(current, segment);
+            if (!(current instanceof Map<?, ?> m)) return null;
+            current = m.get(segment);
         }
         return current;
     }
 
-    private Object readSingle(Object target, String fieldName) {
-        try {
-            String getter = "get" + capitalize(fieldName);
-            return target.getClass().getMethod(getter).invoke(target);
-        } catch (NoSuchMethodException _) {
-            // try boolean-style "is" prefix for primitive booleans
-            try {
-                String getter = "is" + capitalize(fieldName);
-                return target.getClass().getMethod(getter).invoke(target);
-            } catch (ReflectiveOperationException _) {
-                log.debug("[ENGINE] No getter for source field '{}' on {}", fieldName,
-                        target.getClass().getSimpleName());
-                return null;
-            }
-        } catch (ReflectiveOperationException e) {
-            log.debug("[ENGINE] Failed to read source field '{}': {}", fieldName, e.getMessage());
-            return null;
-        }
-    }
-
-    /**
-     * Finds the setter for {@code fieldName} on {@code target}, coerces {@code value}
-     * to the setter's parameter type, and invokes it.
-     *
-     * @return {@code true} if the setter was found and invoked successfully
-     */
-    private boolean writeField(Object target, String fieldName, Object value) {
-        String setterName = "set" + capitalize(fieldName);
-        for (Method method : target.getClass().getMethods()) {
-            if (!method.getName().equals(setterName) || method.getParameterCount() != 1) continue;
-            Class<?> paramType = method.getParameterTypes()[0];
-            Object coerced = coerce(value, paramType);
-            if (coerced == null) return false;
-            try {
-                method.invoke(target, coerced);
-                return true;
-            } catch (ReflectiveOperationException e) {
-                log.debug("[ENGINE] setter {}#{} threw: {}", target.getClass().getSimpleName(),
-                        setterName, e.getMessage());
-                return false;
-            }
-        }
-        log.debug("[ENGINE] No setter '{}' found on {}", setterName, target.getClass().getSimpleName());
-        return false;
-    }
-
-    // ── Type coercion ─────────────────────────────────────────────────────────
-
-    private Object coerce(Object value, Class<?> targetType) {
-        if (value == null) return null;
-        if (targetType.isInstance(value)) return value;
-
-        String str = value.toString().trim();
-        if (str.isEmpty()) return null;
-
-        try {
-            if (String.class == targetType)                              return str;
-            if (BigDecimal.class == targetType)                          return new BigDecimal(str);
-            if (LocalDate.class == targetType)                           return parseDate(str);
-            if (LocalDateTime.class == targetType)                       return LocalDateTime.parse(str);
-            if (Long.class == targetType || long.class == targetType)    return Long.parseLong(str);
-            if (Integer.class == targetType || int.class == targetType)  return Integer.parseInt(str);
-            if (Boolean.class == targetType || boolean.class == targetType) {
-                return !"0".equals(str) && !"false".equalsIgnoreCase(str);
-            }
-        } catch (Exception e) {
-            log.debug("[ENGINE] Cannot coerce '{}' to {}: {}", str, targetType.getSimpleName(), e.getMessage());
-        }
-        return null;
-    }
-
-    private LocalDate parseDate(String str) {
-        // Accept ISO datetime strings by taking the date portion only
-        return LocalDate.parse(str.length() > 10 ? str.substring(0, 10) : str);
-    }
-
     // ── Utilities ─────────────────────────────────────────────────────────────
+
+    private static Map<String, Object> newSection() {
+        return new LinkedHashMap<>();
+    }
 
     private static LocalDateTime epochToUtc(long epochMillis) {
         return LocalDateTime.ofInstant(Instant.ofEpochMilli(epochMillis), ZoneOffset.UTC);
-    }
-
-    private static String capitalize(String s) {
-        if (s == null || s.isEmpty()) return s;
-        return Character.toUpperCase(s.charAt(0)) + s.substring(1);
     }
 
     private static boolean hasEntries(List<?> list) {

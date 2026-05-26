@@ -8,12 +8,14 @@ import com.poc.transactions_consumer_canonical.repository.GenericTableRepository
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
+import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
@@ -51,7 +53,8 @@ class MetadataTransactionServiceTest {
                 .columns(List.of(
                         ColumnMetadata.builder().jsonName("tranId").dbColumn("TRAN_ID").sqlType("VARCHAR")
                                 .pk(true).nullGuard(false).build(),
-                        ColumnMetadata.builder().jsonName("name").dbColumn("NAME").sqlType("VARCHAR").build()))
+                        ColumnMetadata.builder().jsonName("name").dbColumn("NAME").sqlType("VARCHAR")
+                                .maxLength(100).required(true).build()))
                 .children(List.of(
                         ChildMetadata.builder().jsonName("oneOne").tableRef("CHILD_11")
                                 .cardinality("ONE_TO_ONE").childKey("TRAN_ID").build(),
@@ -67,6 +70,8 @@ class MetadataTransactionServiceTest {
         when(registry.require("CHILD_11")).thenReturn(oneToOneChild);
         when(registry.require("CHILD_1M")).thenReturn(oneToManyChild);
     }
+
+    // ── findByPk ──────────────────────────────────────────────────────────────
 
     @Test
     void findByPk_absent_returnsEmpty() {
@@ -106,5 +111,106 @@ class MetadataTransactionServiceTest {
         assertThat(out).isPresent();
         assertThat(out.get().get("oneOne")).isNull();
         assertThat(out.get().get("oneMany")).isInstanceOf(List.class);
+    }
+
+    // ── getMetadata ───────────────────────────────────────────────────────────
+
+    @Test
+    void getMetadata_returnsCorrectTopLevelFields() {
+        Map<String, Object> view = service.getMetadata("parent");
+
+        assertThat(view).containsEntry("name",       "PARENT")
+                        .containsEntry("alias",      "parent")
+                        .containsEntry("pk",         "TRAN_ID")
+                        .containsEntry("pkJsonName", "tranId");
+    }
+
+    @Test
+    void getMetadata_columnsContainExpectedFields() {
+        Map<String, Object> view = service.getMetadata("parent");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> cols = (List<Map<String, Object>>) view.get("columns");
+        assertThat(cols).hasSize(2);
+
+        // PK column
+        Map<String, Object> pkCol = cols.get(0);
+        assertThat(pkCol).containsEntry("jsonName",  "tranId")
+                         .containsEntry("dbColumn",  "TRAN_ID")
+                         .containsEntry("sqlType",   "VARCHAR")
+                         .containsEntry("pk",        true)
+                         .containsEntry("nullGuard", false)
+                         .containsEntry("converter", "PASSTHROUGH");
+
+        // Regular column with constraints
+        Map<String, Object> nameCol = cols.get(1);
+        assertThat(nameCol).containsEntry("jsonName",  "name")
+                           .containsEntry("required",  true)
+                           .containsEntry("maxLength", 100)
+                           .containsEntry("readOnly",  false)
+                           .containsEntry("audit",     false);
+    }
+
+    @Test
+    void getMetadata_childrenContainExpectedFields() {
+        Map<String, Object> view = service.getMetadata("parent");
+
+        @SuppressWarnings("unchecked")
+        List<Map<String, Object>> children = (List<Map<String, Object>>) view.get("children");
+        assertThat(children).hasSize(2);
+
+        Map<String, Object> oneOne = children.get(0);
+        assertThat(oneOne).containsEntry("jsonName",    "oneOne")
+                          .containsEntry("tableRef",    "CHILD_11")
+                          .containsEntry("cardinality", "ONE_TO_ONE")
+                          .containsEntry("childKey",    "TRAN_ID");
+
+        Map<String, Object> oneMany = children.get(1);
+        assertThat(oneMany).containsEntry("cardinality", "ONE_TO_MANY")
+                           .containsEntry("idJsonName",  "id");
+    }
+
+    @Test
+    void getMetadata_unknownAlias_propagatesException() {
+        when(registry.require("unknown")).thenThrow(new IllegalArgumentException("No table or alias matches: unknown"));
+        assertThatThrownBy(() -> service.getMetadata("unknown"))
+                .isInstanceOf(IllegalArgumentException.class)
+                .hasMessageContaining("unknown");
+    }
+
+    // ── listMetadata ──────────────────────────────────────────────────────────
+
+    @Test
+    void listMetadata_returnsSortedByAlias() {
+        TableMetadata alpha = TableMetadata.builder().name("ALPHA").alias("alpha")
+                .pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder().jsonName("id").dbColumn("ID")
+                        .sqlType("VARCHAR").pk(true).nullGuard(false).build()))
+                .build();
+        TableMetadata zeta = TableMetadata.builder().name("ZETA").alias("zeta")
+                .pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder().jsonName("id").dbColumn("ID")
+                        .sqlType("VARCHAR").pk(true).nullGuard(false).build()))
+                .build();
+        TableMetadata mid = TableMetadata.builder().name("MID").alias("mid-table")
+                .pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder().jsonName("id").dbColumn("ID")
+                        .sqlType("VARCHAR").pk(true).nullGuard(false).build()))
+                .build();
+
+        when(registry.all()).thenReturn((Collection) List.of(zeta, alpha, mid));
+
+        List<Map<String, Object>> result = service.listMetadata();
+
+        assertThat(result).hasSize(3);
+        assertThat(result.get(0)).containsEntry("alias", "alpha");
+        assertThat(result.get(1)).containsEntry("alias", "mid-table");
+        assertThat(result.get(2)).containsEntry("alias", "zeta");
+    }
+
+    @Test
+    void listMetadata_emptyRegistry_returnsEmptyList() {
+        when(registry.all()).thenReturn(List.of());
+        assertThat(service.listMetadata()).isEmpty();
     }
 }
