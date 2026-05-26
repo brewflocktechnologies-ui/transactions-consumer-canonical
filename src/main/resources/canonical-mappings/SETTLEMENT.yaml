@@ -23,6 +23,7 @@
 eventType: SETTLEMENT
 tranIdSource: tranId
 tranType: SETTLEMENT
+pipeline: CLRG_SETLMT
 
 rules:
   allowedEventSources:

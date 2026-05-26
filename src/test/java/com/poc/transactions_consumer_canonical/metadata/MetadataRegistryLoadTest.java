@@ -137,6 +137,69 @@ class MetadataRegistryLoadTest {
                 .isInstanceOf(NullPointerException.class);
     }
 
+    // ─────────────────────────────────────────────────────────────────
+    // validateChildReferences() — extracted second-pass validation
+    // ─────────────────────────────────────────────────────────────────
+
+    @Test
+    void validateChildReferences_unknownTableRef_throws() throws Exception {
+        MetadataRegistry registry = new MetadataRegistry();
+        // Load a parent table that has a child referencing a table not in the registry
+        String parentYaml = """
+                name: PARENT
+                alias: parent
+                pk: ID
+                pkJsonName: id
+                columns:
+                  - { jsonName: id, dbColumn: ID, sqlType: VARCHAR, pk: true, nullGuard: false }
+                children:
+                  - { jsonName: child, tableRef: UNKNOWN_TABLE, cardinality: ONE_TO_MANY, childKey: PARENT_ID }
+                """;
+        LOAD_ONE.invoke(registry, yamlResource(parentYaml, "parent.yaml"));
+        assertThatThrownBy(registry::validateChildReferences)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("references unknown table");
+    }
+
+    @Test
+    void validateChildReferences_childKeyNotOnChildTable_throws() throws Exception {
+        MetadataRegistry registry = new MetadataRegistry();
+        String childYaml = """
+                name: CHILD_T
+                alias: child-t
+                pk: CHILD_ID
+                pkJsonName: childId
+                columns:
+                  - { jsonName: childId, dbColumn: CHILD_ID, sqlType: VARCHAR, pk: true, nullGuard: false }
+                """;
+        String parentYaml = """
+                name: PARENT_T
+                alias: parent-t
+                pk: ID
+                pkJsonName: id
+                columns:
+                  - { jsonName: id, dbColumn: ID, sqlType: VARCHAR, pk: true, nullGuard: false }
+                children:
+                  - { jsonName: child, tableRef: CHILD_T, cardinality: ONE_TO_MANY, childKey: NONEXISTENT_COL }
+                """;
+        LOAD_ONE.invoke(registry, yamlResource(childYaml, "child.yaml"));
+        LOAD_ONE.invoke(registry, yamlResource(parentYaml, "parent.yaml"));
+        assertThatThrownBy(registry::validateChildReferences)
+                .isInstanceOf(IllegalStateException.class)
+                .hasMessageContaining("childKey")
+                .hasMessageContaining("NONEXISTENT_COL");
+    }
+
+    @Test
+    void validateChildReferences_nullChildrenList_isSkipped() throws Exception {
+        MetadataRegistry registry = new MetadataRegistry();
+        LOAD_ONE.invoke(registry, yamlResource(VALID_T1, "t1.yaml"));
+        // Manually set children to null to hit the null-guard branch
+        TableMetadata t = registry.require("T1");
+        t.setChildren(null);
+        registry.validateChildReferences(); // must not throw
+    }
+
     @Test
     void all_isUnmodifiable() {
         MetadataRegistry registry = new MetadataRegistry();

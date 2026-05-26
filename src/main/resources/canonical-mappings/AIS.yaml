@@ -39,9 +39,9 @@ eventNames:
   - AIS
 
 # ---------------------------------------------------------------------------
-# Parent: SendTransactionRequest top-level fields  (SEND_TRANSACTIONS)
+# Transaction: SendTransactionRequest top-level fields  (SEND_TRANSACTIONS)
 # ---------------------------------------------------------------------------
-parent:
+transaction:
   # Core identifiers
   - { source: correlationId,                               target: corltnId }
   - { source: accountInformationId,                        target: tranInitId }
@@ -79,7 +79,7 @@ parent:
   - { source: sendingAccountEligible.responseReasonDetail, target: errCdDesc }
 
   # Network / brand / validation
-  - { source: network,                                     target: ntwrkCd }
+  # ntwrkCd is source-specific — see sourceMappings below
   - { source: networkResponseCode,                         target: ntwrkRespCd }
   - { source: networkResponseCodeDesc,                     target: ntwrkRespCdDesc }
   - { source: cvcStatus,                                   target: cvcStat }
@@ -221,3 +221,20 @@ addrDtl:
       - { source: rcvrPostalCd,                            target: postCd }
       - { source: rcvrAddrStat,                            target: addrStat }
       - { source: rcvrPostCdStat,                          target: postCdStat }
+
+# ---------------------------------------------------------------------------
+# Source-specific overrides — applied on top of common mappings above.
+# The key matches EventEnvelope.eventSource (case-insensitive).
+# If a source field is absent in the JSON the target field is left null.
+# ---------------------------------------------------------------------------
+sourceMappings:
+
+  # SEND_COMMON_SERVICES sends the network code in the `network` field.
+  SEND_COMMON_SERVICES:
+    transaction:
+      - { source: network,                                 target: ntwrkCd }
+
+  # AIS_SERVICE sends the network code in the `networkSrc` field.
+  AIS_SERVICE:
+    transaction:
+      - { source: networkSrc,                              target: ntwrkCd }

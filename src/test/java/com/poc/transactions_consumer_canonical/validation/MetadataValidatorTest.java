@@ -76,4 +76,79 @@ class MetadataValidatorTest {
         Map<String, String> errs = v.validate(table(), null);
         assertEquals("request body is required", errs.get("_body"));
     }
+
+    @Test
+    void non_string_value_skips_string_constraints() {
+        // Integer value: not a String, so validateStringConstraints is never called
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "X-001");
+        p.put("name", 42); // Integer, not String
+        assertTrue(v.validate(table(), p).isEmpty());
+    }
+
+    @Test
+    void column_with_null_jsonName_is_skipped() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T1").alias("t1").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // jsonName intentionally null — should be silently skipped
+                        ColumnMetadata.builder().dbColumn("INTERNAL").sqlType("VARCHAR")
+                                .required(true).build()))
+                .build();
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "X-001");
+        // no "internal" key — but column has null jsonName so it's skipped
+        assertTrue(v.validate(t, p).isEmpty());
+    }
+
+    @Test
+    void readOnly_non_audit_column_is_skipped_entirely() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T1").alias("t1").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // readOnly:true but audit:false — should be skipped (not validated)
+                        ColumnMetadata.builder().jsonName("computed").dbColumn("COMPUTED")
+                                .sqlType("VARCHAR").readOnly(true).required(true).build()))
+                .build();
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "X-001");
+        // "computed" absent from payload; required:true but readOnly skips it
+        assertTrue(v.validate(t, p).isEmpty());
+    }
+
+    @Test
+    void blank_pattern_string_is_not_applied() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T1").alias("t1").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        ColumnMetadata.builder().jsonName("tag").dbColumn("TAG").sqlType("VARCHAR")
+                                .pattern("   ").build())) // blank pattern → not applied
+                .build();
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "X-001");
+        p.put("tag", "anything goes");
+        assertTrue(v.validate(t, p).isEmpty());
+    }
+
+    @Test
+    void string_with_null_maxLength_does_not_fail_length_check() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T1").alias("t1").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // maxLength is null (not set) — no length constraint applied
+                        ColumnMetadata.builder().jsonName("desc").dbColumn("DESC").sqlType("VARCHAR").build()))
+                .build();
+        Map<String, Object> p = new HashMap<>();
+        p.put("id", "X-001");
+        p.put("desc", "A".repeat(500)); // very long but maxLength is null
+        assertTrue(v.validate(t, p).isEmpty());
+    }
 }

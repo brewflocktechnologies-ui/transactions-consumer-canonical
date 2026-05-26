@@ -114,9 +114,7 @@ public class TableMetadata {
         }
         if (!pkFound)
             throw new IllegalStateException("Table " + name + " has no column with pk:true");
-        if (pkColumn() == null)
-            throw new IllegalStateException("Table " + name + " pk '" + pk
-                    + "' does not match any column with pk:true");
+        pkColumn(); // verifies pk field names a real column; throws IllegalStateException if not
     }
 
     private void validateColumn(ColumnMetadata c, Set<String> seenDb, Set<String> seenJson) {

@@ -38,9 +38,9 @@ eventNames:
   - PAYMENT_REVERSED
 
 # ---------------------------------------------------------------------------
-# Parent: SendTransactionRequest top-level fields
+# Transaction: SendTransactionRequest top-level fields
 # ---------------------------------------------------------------------------
-parent:
+transaction:
   # Core identifiers
   - { source: correlationId,           target: corltnId }
   - { source: transactionId,           target: tranInitId }

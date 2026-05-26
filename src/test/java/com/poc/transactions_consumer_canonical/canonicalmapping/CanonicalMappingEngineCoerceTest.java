@@ -133,4 +133,39 @@ class CanonicalMappingEngineCoerceTest {
     void safeRead_blankPath_returnsNull() throws Exception {
         assertThat(safeRead(new Object(), "   ")).isNull();
     }
+
+    // ─────────────────────────────────────────────────────────────────
+    // capitalize — null and empty branches (private helper)
+    // ─────────────────────────────────────────────────────────────────
+
+    private static Object capitalize(String s) throws Exception {
+        Method m = CanonicalMappingEngine.class.getDeclaredMethod("capitalize", String.class);
+        m.setAccessible(true);
+        return m.invoke(new CanonicalMappingEngine(), s);
+    }
+
+    @Test
+    void capitalize_null_returnsNull() throws Exception {
+        assertThat(capitalize(null)).isNull();
+    }
+
+    @Test
+    void capitalize_empty_returnsEmpty() throws Exception {
+        assertThat(capitalize("")).isEqualTo("");
+    }
+
+    // ─────────────────────────────────────────────────────────────────
+    // hasEntries — non-null empty list branch
+    // ─────────────────────────────────────────────────────────────────
+
+    private static Object hasEntries(java.util.List<?> list) throws Exception {
+        Method m = CanonicalMappingEngine.class.getDeclaredMethod("hasEntries", java.util.List.class);
+        m.setAccessible(true);
+        return m.invoke(new CanonicalMappingEngine(), list);
+    }
+
+    @Test
+    void hasEntries_emptyList_returnsFalse() throws Exception {
+        assertThat(hasEntries(java.util.List.of())).isEqualTo(false);
+    }
 }

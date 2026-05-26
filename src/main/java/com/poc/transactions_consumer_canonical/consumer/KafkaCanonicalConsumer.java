@@ -46,7 +46,7 @@ public class KafkaCanonicalConsumer {
     private static final String OUTER_SEPARATOR = "===============================================";
     private static final String INNER_SEPARATOR = "-----------------------------------------------";
 
-    private static final String CLEARING_EVENT_TYPE = "CLEARING";
+    private static final String PIPELINE_CLRG_SETLMT  = "CLRG_SETLMT";
     private static final String SETTLEMENT_EVENT_TYPE = "SETTLEMENT";
 
     private final ObjectMapper              objectMapper;
@@ -121,14 +121,12 @@ public class KafkaCanonicalConsumer {
 
         logTransaction(txn);
 
-        // ── CLEARING / SETTLEMENT branch (dual-message 2nd leg) ──────────────
-        // Both events bypass the SendTransactionRequest path. The 5th-table
-        // request is mapped from `txn` via the clrgSetlmt: block in the YAML
-        // and handed to the service for parent-existence guard + upsert.
-        String eventType = mapping.getEventType();
-        if (CLEARING_EVENT_TYPE.equalsIgnoreCase(eventType)
-                || SETTLEMENT_EVENT_TYPE.equalsIgnoreCase(eventType)) {
-            handleClrgSetlmtEvent(mapping, txn, envelope, eventType);
+        // ── pipeline: CLRG_SETLMT branch (dual-message 2nd/3rd leg) ─────────
+        // Any event whose YAML declares `pipeline: CLRG_SETLMT` bypasses the
+        // standard SendTransactionRequest path. Adding a new 5th-table event
+        // type only requires a new YAML file — no Java change needed here.
+        if (PIPELINE_CLRG_SETLMT.equalsIgnoreCase(mapping.getPipeline())) {
+            handleClrgSetlmtEvent(mapping, txn, envelope);
             log.info(OUTER_SEPARATOR);
             return;
         }
@@ -167,8 +165,8 @@ public class KafkaCanonicalConsumer {
 
     private void handleClrgSetlmtEvent(EventTypeMapping mapping,
                                        TransactionEventAxonMessage txn,
-                                       EventEnvelope envelope,
-                                       String eventType) {
+                                       EventEnvelope envelope) {
+        String eventType = mapping.getEventType();
         String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
         SendTranClrgSetlmtRequest req = mappingEngine.applyTo(
                 mapping.getClrgSetlmt(), txn, new SendTranClrgSetlmtRequest());

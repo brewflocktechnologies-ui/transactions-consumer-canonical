@@ -497,6 +497,7 @@ public class TransactionEventAxonMessage {
     private String currency;
     private String transactionType;
     private String network;
+    private String networkSrc;
     private String curStat;
     private String origStat;
     private String accountType;

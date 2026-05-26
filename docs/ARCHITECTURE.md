@@ -8,16 +8,17 @@
 
 ## 1. Executive summary
 
-We have built a single Spring Boot service that persists a **canonical Send-Transactions schema** to Oracle and exposes it through two parallel REST surfaces:
+We have built a single Spring Boot service that persists a **canonical Send-Transactions schema** to Oracle through three complementary surfaces:
 
 | Surface | Mechanism | Purpose |
 |---|---|---|
-| **v1** | Typed POJOs, hand-written SQL, full Swagger schema | Stable contract for existing callers; preserves type-safety |
-| **v2** | YAML-metadata-driven engine, generated SQL, `Map<String,Object>` payloads | **Adding a new column = 1 YAML line + DBA DDL. Zero code change, zero rebuild.** |
+| **v1 REST** | Typed POJOs, hand-written SQL, full Swagger schema | Stable contract for existing callers; preserves type-safety |
+| **v2 REST** | YAML-metadata-driven engine, generated SQL, `Map<String,Object>` payloads | **Adding a new column = 1 YAML line + DBA DDL. Zero code change, zero rebuild.** |
+| **Kafka consumer** | YAML-driven canonical mapping pipeline | **Adding a new event type = 1 YAML file. Zero code change, zero rebuild.** |
 
-Both surfaces share one datasource, one error-handling layer, one observability stack, and one deployment. The v2 engine is roughly **8 generic classes** that replace what would otherwise be **~30 hand-written classes per table** with Spring Data JPA + ModelMapper.
+All three surfaces share one datasource, one error-handling layer, one observability stack, and one deployment. The v2 engine and the Kafka mapping engine together are roughly **12 generic classes** that replace what would otherwise be **~30 hand-written classes per table** with Spring Data JPA + ModelMapper.
 
-The architectural payoff is a measurable reduction in **lead-time-for-change**: a new column lands in one PR touching one YAML file, versus a JPA approach that requires editing the entity, repository, mapper, service, and DTOs in lockstep.
+The architectural payoff is a measurable reduction in **lead-time-for-change**: a new column or event type lands in one PR touching one YAML file, versus a JPA approach that requires editing the entity, repository, mapper, service, and DTOs in lockstep.
 
 ---
 
@@ -25,12 +26,13 @@ The architectural payoff is a measurable reduction in **lead-time-for-change**: 
 
 | # | Goal | How we achieve it |
 |---|---|---|
-| G1 | One canonical schema for downstream consumers | 4 tables (`SEND_TRANSACTIONS` + 3 children) modelled once, served via both API versions |
+| G1 | One canonical schema for downstream consumers | 5 tables (`SEND_TRANSACTIONS` + 4 children) modelled once, served via both API versions and the Kafka consumer |
 | G2 | Add a new column without a code release | Metadata-driven v2 engine — YAML descriptor drives SQL, validation, mapping |
 | G3 | Adding new tables should reuse the same engine | Generic `MetadataTransactionService` works for any table whose YAML is loaded |
 | G4 | Preserve existing client contracts during evolution | Keep v1 typed surface live indefinitely alongside v2 |
 | G5 | DBA team owns schema lifecycle, not the application | App does **no** DDL/DML at startup. Flyway intentionally not used. DBA pipeline applies migrations |
 | G6 | Production-grade ops profile | Externalized config, masked errors, HikariCP tuned, MDC trace IDs, Prometheus metrics, profile separation, hardened Docker image |
+| G7 | Add a new event type without a code release | Drop a YAML file under `canonical-mappings/` — `CanonicalMappingRegistry` picks it up on restart. `pipeline: CLRG_SETLMT` routes to the 5th-table path; absent = standard 4-table path |
 
 ---
 
@@ -81,7 +83,7 @@ The architectural payoff is a measurable reduction in **lead-time-for-change**: 
     - MetadataRegistry         → classpath:metadata/*.yaml loaded & validated at @PostConstruct
 ```
 
-### Component responsibilities
+### 3.1 REST API surfaces — component responsibilities
 
 | Layer | v1 (typed) | v2 (metadata-driven) |
 |---|---|---|
@@ -93,11 +95,112 @@ The architectural payoff is a measurable reduction in **lead-time-for-change**: 
 
 ---
 
+### 3.2 Kafka Consumer Pipeline
+
+A second inbound surface runs alongside the REST APIs. A `@KafkaListener` on the `transactions` topic drives a YAML-configured canonical mapping pipeline:
+
+```
+  Kafka topic: transactions
+         │
+         ▼
+┌──────────────────────────────────────────────────────────────────────┐
+│  KafkaCanonicalConsumer  (8-step pipeline)                           │
+│                                                                      │
+│  1. Deserialise  raw JSON          →  EventEnvelope                  │
+│  2. Check        ignore flag          skip if true (flagged upstream)│
+│  3. Route        eventName         →  EventTypeMapping  (YAML)       │
+│  4. Evaluate     rules             →  allowedSources / operations    │
+│  5. Sanitize     eventPayload         4-strategy rectification       │
+│  6. Deserialise  eventPayload      →  TransactionEventAxonMessage    │
+│  7. Map fields   (reflection)      →  canonical DTO                  │
+│  8. Persist      to Oracle                                           │
+└──────────────────────────┬───────────────────────────────────────────┘
+                           │
+          pipeline: (from YAML EventTypeMapping)
+                           │
+              ┌────────────┴────────────────────┐
+              │                                 │
+      absent / null                      "CLRG_SETLMT"
+              │                                 │
+              ▼                                 ▼
+  SendTransactionService               ClearingEventService
+  .upsert(tranId, req)                 .upsertClearing(req)
+  Standard 4-table path                .upsertSettlement(req)
+  (SEND_TRANSACTIONS family)           5th-table path
+                                       (SEND_TRAN_CLRG_SETLMT)
+```
+
+#### Component responsibilities
+
+| Component | Role |
+|---|---|
+| `KafkaCanonicalConsumer` | Orchestrates the 8-step pipeline; routes to 5th-table path when `mapping.getPipeline()` equals `"CLRG_SETLMT"` |
+| `CanonicalMappingRegistry` | Loads all `classpath:canonical-mappings/*.yaml` at `@PostConstruct`; builds a lookup index by `eventName` and `eventType` |
+| `CanonicalRuleEngine` | Evaluates `rules.allowedEventSources` and `rules.allowedOperations` per mapping; filters messages before payload deserialization |
+| `EventPayloadSanitizer` | Applies four progressive rectification strategies (trim → unwrap double-serialized JSON → lenient re-parse) to the raw `eventPayload` string |
+| `CanonicalMappingEngine` | Reflection-driven field mapper. Reads source fields from `TransactionEventAxonMessage` via `get`/`is` accessors; supports dot-notation nested paths (e.g. `account.eligible`). Coerces `String → BigDecimal / LocalDate / LocalDateTime / Long / Boolean`. Source-specific overlays (`sourceMappings:`) applied last on top of common mappings. |
+| `ClearingEventService` | 5th-table path — verifies the parent `SEND_TRANSACTIONS` row exists, then MERGEs into `SEND_TRAN_CLRG_SETLMT` |
+
+#### YAML-driven event type onboarding
+
+Each event type is a YAML file under `classpath:canonical-mappings/`. No Java changes are required to add a new event type:
+
+```yaml
+# Example: adding a new standard (4-table) event type
+eventType: REFUND
+tranIdSource: tranId
+tranType: REFUND
+# pipeline: absent → standard 4-table path
+
+rules:
+  allowedEventSources: [REFUND_SERVICE]
+  allowedOperations:   [A, U]
+
+eventNames:
+  - REFUND_INITIATED
+  - REFUND_COMPLETED
+
+transaction:
+  - { source: tranAmt,  target: tranAmt }
+  - { source: curCode,  target: tranAmtCurr }
+
+tranDtl:
+  - { source: refRqst,  target: bncGtwyRqst }
+
+sourceMappings:           # optional: per-source field overrides
+  AIS_SERVICE:
+    transaction:
+      - { source: networkSrc, target: ntwrkCd }
+```
+
+| `pipeline:` value | Route |
+|---|---|
+| absent / `null` | Standard 4-table path (`SendTransactionService.upsert`) |
+| `CLRG_SETLMT` | 5th-table path (`ClearingEventService`); mapping driven by the `clrgSetlmt:` block |
+
+**To add a standard event type:** drop a YAML file. **To add a 5th-table event type:** drop a YAML file with `pipeline: CLRG_SETLMT`. Zero Java changes either way.
+
+#### Source-specific overlays
+
+The optional `sourceMappings:` block allows different upstream producers sending the same `eventName` to use different source field names. Common mappings run first; the source-specific block (matched case-insensitively on `EventEnvelope.eventSource`) overlays / supplements them. Absent source fields in the JSON are silently skipped — the target retains its value from the common pass.
+
+```yaml
+sourceMappings:
+  SEND_COMMON_SERVICES:
+    transaction:
+      - { source: network,    target: ntwrkCd }
+  AIS_SERVICE:
+    transaction:
+      - { source: networkSrc, target: ntwrkCd }
+```
+
+---
+
 ## 4. Key design decisions
 
 ### 4.1 Canonical schema design
 
-The four tables represent **one canonical view of a Send-Transaction** that downstream consumers can rely on regardless of upstream source format:
+The five tables represent **one canonical view of a Send-Transaction** that downstream consumers can rely on regardless of upstream source format:
 
 | Table | Cardinality | Purpose |
 |---|---|---|
@@ -105,6 +208,7 @@ The four tables represent **one canonical view of a Send-Transaction** that down
 | `SEND_TRAN_DTL` | 1:1 child | Acceptance / merchant detail, **CLOB payloads** (raw request/response) |
 | `SEND_RECIP_DTL` | 1:1 child | Sender + recipient PII (names, DOB, addresses, **CLOB govt-id-URI**) |
 | `SEND_TRAN_ADDR_DTL` | 1:many child | Address graph (sender / recipient / billing variants) |
+| `SEND_TRAN_CLRG_SETLMT` | 1:1 child | Clearing & settlement leg — populated by CLEARING / SETTLEMENT Kafka events after the parent row exists; mapped via `pipeline: CLRG_SETLMT` YAML events |
 
 Design choices that make this "canonical":
 

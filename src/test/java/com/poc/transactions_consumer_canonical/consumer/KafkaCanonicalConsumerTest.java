@@ -165,6 +165,7 @@ class KafkaCanonicalConsumerTest {
 
         EventTypeMapping m = new EventTypeMapping();
         m.setEventType(eventType);
+        m.setPipeline("CLRG_SETLMT");
         when(registry.findByEventName(eventName)).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of(env.getEventPayload()));
@@ -214,6 +215,7 @@ class KafkaCanonicalConsumerTest {
 
         EventTypeMapping m = new EventTypeMapping();
         m.setEventType("CLEARING");
+        m.setPipeline("CLRG_SETLMT");
         when(registry.findByEventName("CLEARING_SETTLED")).thenReturn(Optional.of(m));
         when(ruleEngine.shouldProcess(any(), any())).thenReturn(true);
         when(sanitizer.sanitize(anyString())).thenReturn(Optional.of("{bad json}"));

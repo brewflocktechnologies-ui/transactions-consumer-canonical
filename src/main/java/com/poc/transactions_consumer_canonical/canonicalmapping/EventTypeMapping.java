@@ -5,6 +5,7 @@ import lombok.Data;
 import lombok.NoArgsConstructor;
 
 import java.util.List;
+import java.util.Map;
 
 /**
  * Root model for one canonical-mapping YAML file (e.g. PAYMENT.yaml, FUNDING.yaml).
@@ -16,7 +17,7 @@ import java.util.List;
  *   - PAYMENT_COMPLETED
  * tranIdSource: tranId          # field on TransactionEventAxonMessage used as DB TRAN_ID
  * tranType:     SEND            # literal value for SendTransactionRequest.tranType
- * parent:       [ {source,target}, … ]
+ * transaction:  [ {source,target}, … ]
  * tranDtl:      [ {source,target}, … ]
  * recipDtl:     [ {source,target}, … ]
  * addrDtl:
@@ -56,8 +57,8 @@ public class EventTypeMapping {
     /** Literal value written to {@code SendTransactionRequest.tranType}. */
     private String tranType;
 
-    /** Mappings into {@code SendTransactionRequest} top-level (parent) fields. */
-    private List<FieldMapping> parent;
+    /** Mappings into {@code SendTransactionRequest} top-level fields. */
+    private List<FieldMapping> transaction;
 
     /** Mappings into {@code SendTranDtlRequest} (1:1 child). */
     private List<FieldMapping> tranDtl;
@@ -79,6 +80,17 @@ public class EventTypeMapping {
     private List<FieldMapping> clrgSetlmt;
 
     /**
+     * Optional pipeline selector.  When set to {@code "CLRG_SETLMT"} the consumer
+     * routes the event to the 5th-table ({@code SEND_TRAN_CLRG_SETLMT}) path via
+     * {@code ClearingEventService} instead of the standard 4-table
+     * {@code SendTransactionService} path.  Absent or {@code null} = standard path.
+     *
+     * <p>Adding a new 5th-table event type only requires a new YAML file with
+     * {@code pipeline: CLRG_SETLMT} — no Java changes.
+     */
+    private String pipeline;
+
+    /**
      * Optional filtering rules evaluated before the mapping pipeline runs.
      * A {@code null} rules block means "allow all messages" for this event type.
      *
@@ -92,4 +104,21 @@ public class EventTypeMapping {
      * </pre>
      */
     private RulesConfig rules;
+
+    /**
+     * Per-source mapping overrides applied on top of the common sections above.
+     * The map key is the {@code EventEnvelope.eventSource} value (case-insensitive lookup).
+     * Common mappings run first; source-specific mappings overlay / supplement them.
+     *
+     * <pre>
+     * sourceMappings:
+     *   SEND_COMMON_SERVICES:
+     *     transaction:
+     *       - { source: network,    target: ntwrkCd }
+     *   AIS_SERVICE:
+     *     transaction:
+     *       - { source: networkSrc, target: ntwrkCd }
+     * </pre>
+     */
+    private Map<String, SourceMapping> sourceMappings;
 }

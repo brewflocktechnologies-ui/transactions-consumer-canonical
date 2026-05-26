@@ -27,6 +27,7 @@
 eventType: CLEARING
 tranIdSource: tranId
 tranType: CLEARING
+pipeline: CLRG_SETLMT
 
 rules:
   allowedEventSources:

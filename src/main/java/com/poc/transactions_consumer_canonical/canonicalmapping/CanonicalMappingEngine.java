@@ -17,6 +17,7 @@ import java.time.LocalDateTime;
 import java.time.ZoneOffset;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
 
 /**
  * Applies an {@link EventTypeMapping} to a {@link TransactionEventAxonMessage}
@@ -85,7 +86,7 @@ public class CanonicalMappingEngine {
         req.setCrteUserNam(SYSTEM_USER);
         req.setUpdtUserNam(SYSTEM_USER);
         req.setNonFinTxn(false); // DB column is NOT NULL; default to 0 (financial txn) unless overridden by YAML mapping
-        applyMappings(mapping.getParent(), txn, req);
+        applyMappings(mapping.getTransaction(), txn, req);
 
         // ── SendTranDtlRequest (1:1 child) ────────────────────────────────────
         if (hasEntries(mapping.getTranDtl())) {
@@ -127,7 +128,108 @@ public class CanonicalMappingEngine {
             req.setAddrDtl(addrs.isEmpty() ? null : addrs);
         }
 
+        // ── Source-specific overlay ────────────────────────────────────────────
+        SourceMapping sm = resolveSourceMapping(mapping.getSourceMappings(), envelope.getEventSource());
+        if (sm != null) {
+            applySourceOverlay(sm, txn, req, eventDt, envelope);
+        }
+
         return req;
+    }
+
+    /**
+     * Looks up a {@link SourceMapping} by event source using case-insensitive matching.
+     * Returns {@code null} when the map is absent or no entry matches.
+     */
+    private SourceMapping resolveSourceMapping(Map<String, SourceMapping> sourceMappings, String eventSource) {
+        if (sourceMappings == null || eventSource == null || eventSource.isBlank()) return null;
+        return sourceMappings.entrySet().stream()
+                .filter(e -> e.getKey().equalsIgnoreCase(eventSource.trim()))
+                .map(Map.Entry::getValue)
+                .findFirst()
+                .orElse(null);
+    }
+
+    /**
+     * Applies source-specific mappings on top of already-populated DTOs.
+     * Missing source fields in the JSON are silently skipped (target retains its value).
+     */
+    private void applySourceOverlay(SourceMapping sm,
+                                    TransactionEventAxonMessage txn,
+                                    SendTransactionRequest req,
+                                    LocalDateTime eventDt,
+                                    EventEnvelope envelope) {
+        if (hasEntries(sm.getTransaction())) applyMappings(sm.getTransaction(), txn, req);
+        if (hasEntries(sm.getTranDtl()))     overlayTranDtl(sm, txn, req, eventDt, envelope);
+        if (hasEntries(sm.getRecipDtl()))    overlayRecipDtl(sm, txn, req, eventDt);
+        if (hasEntries(sm.getAddrDtl()))     overlayAddrDtl(sm, txn, req);
+    }
+
+    private void overlayTranDtl(SourceMapping sm,
+                                TransactionEventAxonMessage txn,
+                                SendTransactionRequest req,
+                                LocalDateTime eventDt,
+                                EventEnvelope envelope) {
+        SendTranDtlRequest dtl = req.getTranDtl();
+        if (dtl == null) {
+            dtl = new SendTranDtlRequest();
+            dtl.setTranCrteDt(eventDt);
+            dtl.setEventId(envelope.getEventId());
+            dtl.setEventTs(eventDt);
+            dtl.setEventCorltnId(envelope.getCorrelationId());
+            dtl.setCrteUserNam(SYSTEM_USER);
+            dtl.setUpdtUserNam(SYSTEM_USER);
+            req.setTranDtl(dtl);
+        }
+        applyMappings(sm.getTranDtl(), txn, dtl);
+    }
+
+    private void overlayRecipDtl(SourceMapping sm,
+                                 TransactionEventAxonMessage txn,
+                                 SendTransactionRequest req,
+                                 LocalDateTime eventDt) {
+        SendRecipDtlRequest recip = req.getRecipDtl();
+        if (recip == null) {
+            recip = new SendRecipDtlRequest();
+            recip.setTranCrteDt(eventDt);
+            recip.setCrteUserNam(SYSTEM_USER);
+            recip.setUpdtUserNam(SYSTEM_USER);
+            req.setRecipDtl(recip);
+        }
+        applyMappings(sm.getRecipDtl(), txn, recip);
+    }
+
+    private void overlayAddrDtl(SourceMapping sm,
+                                TransactionEventAxonMessage txn,
+                                SendTransactionRequest req) {
+        List<SendTranAddrDtlRequest> addrs = req.getAddrDtl() != null
+                ? new ArrayList<>(req.getAddrDtl())
+                : new ArrayList<>();
+        for (AddrDtlGroup group : sm.getAddrDtl()) {
+            overlayAddrDtlGroup(group, txn, addrs);
+        }
+        req.setAddrDtl(addrs.isEmpty() ? null : addrs);
+    }
+
+    private void overlayAddrDtlGroup(AddrDtlGroup group,
+                                     TransactionEventAxonMessage txn,
+                                     List<SendTranAddrDtlRequest> addrs) {
+        final String addrType = group.getAddrType();
+        SendTranAddrDtlRequest existing = addrs.stream()
+                .filter(a -> addrType.equalsIgnoreCase(a.getAddrType()))
+                .findFirst()
+                .orElse(null);
+        if (existing != null) {
+            applyMappings(group.getMappings(), txn, existing);
+        } else {
+            SendTranAddrDtlRequest addr = new SendTranAddrDtlRequest();
+            addr.setAddrType(addrType);
+            addr.setCrteUserNam(SYSTEM_USER);
+            addr.setUpdtUserNam(SYSTEM_USER);
+            if (applyMappings(group.getMappings(), txn, addr) > 0) {
+                addrs.add(addr);
+            }
+        }
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
@@ -165,7 +267,7 @@ public class CanonicalMappingEngine {
 
                 boolean written = writeField(target, fm.getTarget(), value);
                 if (written) count++;
-            } catch (Exception e) {
+            } catch (RuntimeException e) {
                 log.debug("[ENGINE] Skipped mapping {}->{}: {}", fm.getSource(), fm.getTarget(), e.getMessage());
             }
         }
@@ -201,12 +303,12 @@ public class CanonicalMappingEngine {
             try {
                 String getter = "is" + capitalize(fieldName);
                 return target.getClass().getMethod(getter).invoke(target);
-            } catch (Exception _) {
+            } catch (ReflectiveOperationException _) {
                 log.debug("[ENGINE] No getter for source field '{}' on {}", fieldName,
                         target.getClass().getSimpleName());
                 return null;
             }
-        } catch (Exception e) {
+        } catch (ReflectiveOperationException e) {
             log.debug("[ENGINE] Failed to read source field '{}': {}", fieldName, e.getMessage());
             return null;
         }
@@ -228,7 +330,7 @@ public class CanonicalMappingEngine {
             try {
                 method.invoke(target, coerced);
                 return true;
-            } catch (Exception e) {
+            } catch (ReflectiveOperationException e) {
                 log.debug("[ENGINE] setter {}#{} threw: {}", target.getClass().getSimpleName(),
                         setterName, e.getMessage());
                 return false;

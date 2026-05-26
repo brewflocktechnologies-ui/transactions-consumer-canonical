@@ -28,7 +28,7 @@ class CoverageBoostingTests {
         assertThat(rc.getAllowedEventSources()).contains("A");
 
         EventTypeMapping etm = new EventTypeMapping("ET", List.of("e1"), "tran", "T",
-                List.of(fm), List.of(fm), List.of(fm), List.of(ag), List.of(fm), rc);
+                List.of(fm), List.of(fm), List.of(fm), List.of(ag), List.of(fm), null, rc, null);
         assertThat(etm.getEventType()).isEqualTo("ET");
         assertThat(etm.toString()).contains("ET");
     }
@@ -208,7 +208,7 @@ class CoverageBoostingTests {
 
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranType("AIS");
-        mapping.setParent(List.of(
+        mapping.setTransaction(List.of(
                 // amount stored as Long → coerce String→Long succeeds; tranAmt → BigDecimal
                 new FieldMapping("amount", "tranAmt", null),
                 // currency is plain String passthrough
@@ -236,6 +236,138 @@ class CoverageBoostingTests {
         assertThat(t.getChildren()).isNull();
     }
 
+    // ────────────────────────────────────────────────────────────────
+    // TableMetadata.validate() — isBlank() branches (non-null but blank)
+    // ────────────────────────────────────────────────────────────────
+
+    @Test
+    void validate_blankName() {
+        TableMetadata t = TableMetadata.builder()
+                .name("  ").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing 'name'");
+    }
+
+    @Test
+    void validate_blankAlias() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("  ").pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing 'alias'");
+    }
+
+    @Test
+    void validate_blankPk() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("  ").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing 'pk'");
+    }
+
+    @Test
+    void validate_blankPkJsonName() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("  ")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing 'pkJsonName'");
+    }
+
+    @Test
+    void validate_columnBlankDbColumn() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build(),
+                        ColumnMetadata.builder().dbColumn("  ").jsonName("name").sqlType("VARCHAR").build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing dbColumn");
+    }
+
+    @Test
+    void validate_columnBlankSqlType() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().dbColumn("ID").jsonName("id").sqlType("  ").pk(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("missing sqlType");
+    }
+
+    @Test
+    void validate_clobAndNullGuardConflict() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build(),
+                        ColumnMetadata.builder().dbColumn("DOC").jsonName("doc").sqlType("CLOB")
+                                .clob(true).nullGuard(true).build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("clob:true requires nullGuard:false");
+    }
+
+    @Test
+    void qualifiedName_blankSchema_returnsJustName() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        t.setSchema("  "); // blank, not null → should behave like no schema
+        assertThat(t.qualifiedName()).isEqualTo("T");
+    }
+
+    @Test
+    void validate_oneToOneChild_succeeds() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .children(List.of(ChildMetadata.builder().jsonName("c").tableRef("REF")
+                        .cardinality("ONE_TO_ONE").childKey("TRAN_ID").build()))
+                .build();
+        t.validate(); // should not throw
+    }
+
+    @Test
+    void validate_duplicateDbColumn() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build(),
+                        ColumnMetadata.builder().dbColumn("ID").jsonName("id2").sqlType("VARCHAR").build()))
+                .build();
+        assertThatThrownBy(t::validate).hasMessageContaining("duplicate dbColumn");
+    }
+
+    @Test
+    void validate_nullColumns_throwsNoColumns() {
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("ID").pkJsonName("id")
+                .build();
+        t.setColumns(null);
+        assertThatThrownBy(t::validate).hasMessageContaining("no columns");
+    }
+
+    @Test
+    void validate_pkColumnNameMismatch_throwsOnPkColumn() {
+        // PK column exists with pk:true, but table.pk points to a different name
+        TableMetadata t = TableMetadata.builder()
+                .name("T").alias("t").pk("WRONG_COL").pkJsonName("id")
+                .columns(List.of(ColumnMetadata.builder()
+                        .dbColumn("ID").jsonName("id").sqlType("VARCHAR").pk(true).build()))
+                .build();
+        // pkFound will be true (ID has pk:true), but pkColumn() will throw because WRONG_COL not found
+        assertThatThrownBy(t::validate).isInstanceOf(IllegalStateException.class);
+    }
+
     @Test
     void coerce_booleanSourcePropagates_andZeroFalseHandled() {
         CanonicalMappingEngine engine = new CanonicalMappingEngine();
@@ -244,7 +376,7 @@ class CoverageBoostingTests {
 
         EventTypeMapping mapping = new EventTypeMapping();
         mapping.setTranType("AIS");
-        mapping.setParent(List.of(
+        mapping.setTransaction(List.of(
                 new FieldMapping("sendingAccountEligible.eligible", "recipElig", null)
         ));
         TransactionEventAxonMessage txn = new TransactionEventAxonMessage();

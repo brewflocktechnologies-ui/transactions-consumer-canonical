@@ -56,8 +56,13 @@ public class MetadataRegistry {
         for (Resource r : files)     loadOne(r);
         for (Resource r : ymlFiles)  loadOne(r);
 
-        // Second pass: validate child table references resolve
+        validateChildReferences();
+        log.info("MetadataRegistry loaded {} tables: {}", byTable.size(), byTable.keySet());
+    }
+
+    void validateChildReferences() {
         for (TableMetadata t : byTable.values()) {
+            if (t.getChildren() == null) continue;
             for (ChildMetadata cm : t.getChildren()) {
                 TableMetadata child = byTable.get(cm.getTableRef().toUpperCase(Locale.ROOT));
                 if (child == null) {
@@ -65,7 +70,6 @@ public class MetadataRegistry {
                             + " child '" + cm.getJsonName()
                             + "' references unknown table: " + cm.getTableRef());
                 }
-                // verify childKey column exists on child
                 if (child.columnByDbColumn(cm.getChildKey()).isEmpty()) {
                     throw new IllegalStateException("Table " + t.getName()
                             + " child '" + cm.getJsonName() + "' childKey "
@@ -73,8 +77,6 @@ public class MetadataRegistry {
                 }
             }
         }
-
-        log.info("MetadataRegistry loaded {} tables: {}", byTable.size(), byTable.keySet());
     }
 
     private void loadOne(Resource r) throws IOException {

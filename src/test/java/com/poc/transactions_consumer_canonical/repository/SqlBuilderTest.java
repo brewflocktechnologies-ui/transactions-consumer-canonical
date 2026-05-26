@@ -177,6 +177,39 @@ class SqlBuilderTest {
     }
 
     @Test
+    void merge_rplctn_updt_ts_emits_systimestamp() {
+        TableMetadata withReplAudit = TableMetadata.builder()
+                .name("R").alias("r").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        ColumnMetadata.builder().jsonName("rplctnUpdtTs").dbColumn("RPLCTN_UPDT_TS")
+                                .sqlType("TIMESTAMP").audit(true).readOnly(true).build()))
+                .build();
+        withReplAudit.validate();
+        String merge = sql.buildMerge(withReplAudit);
+        assertTrue(merge.contains("RPLCTN_UPDT_TS = SYSTIMESTAMP"),
+                () -> "expected SYSTIMESTAMP for RPLCTN_UPDT_TS:\n" + merge);
+    }
+
+    @Test
+    void merge_readOnly_nonAudit_column_excluded_from_update_and_insert() {
+        TableMetadata withReadOnly = TableMetadata.builder()
+                .name("RO").alias("ro").pk("ID").pkJsonName("id")
+                .columns(List.of(
+                        ColumnMetadata.builder().jsonName("id").dbColumn("ID").sqlType("VARCHAR")
+                                .pk(true).nullGuard(false).build(),
+                        // readOnly:true but audit:false → excluded from UPDATE SET and INSERT
+                        ColumnMetadata.builder().jsonName("computedCol").dbColumn("COMPUTED_COL")
+                                .sqlType("VARCHAR").readOnly(true).build()))
+                .build();
+        withReadOnly.validate();
+        String merge = sql.buildMerge(withReadOnly);
+        assertFalse(merge.contains("COMPUTED_COL"),
+                () -> "readOnly non-audit column must be fully excluded:\n" + merge);
+    }
+
+    @Test
     void no_orphan_children_with_no_child_list() {
         TableMetadata bare = TableMetadata.builder()
                 .name("X").alias("x").pk("ID").pkJsonName("id")

@@ -8,6 +8,7 @@ import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 
+import java.io.IOException;
 import java.util.Optional;
 
 /**
@@ -96,7 +97,7 @@ public class EventPayloadSanitizer {
             log.info("[SANITIZER] Rectified | strategy=UNWRAP_DOUBLE_SERIALIZED | "
                     + "stripped one JSON string layer");
             return Optional.of(unwrapped);
-        } catch (Exception _) {
+        } catch (IOException _) {
             return Optional.empty();
         }
     }
@@ -108,7 +109,7 @@ public class EventPayloadSanitizer {
             log.info("[SANITIZER] Rectified | strategy=LENIENT_RESERIALIZE | "
                     + "accepted single-quotes / trailing-commas / unquoted-keys / comments");
             return Optional.of(canonical);
-        } catch (Exception _) {
+        } catch (IOException _) {
             return Optional.empty();
         }
     }
@@ -125,7 +126,7 @@ public class EventPayloadSanitizer {
         try {
             objectMapper.readTree(s);
             return true;
-        } catch (Exception _) {
+        } catch (IOException _) {
             return false;
         }
     }

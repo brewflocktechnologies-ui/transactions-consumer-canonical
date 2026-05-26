@@ -69,7 +69,7 @@ public final class LogSanitizer {
         if (v == null) return null;
         String s = v.toString();
         if (s.isEmpty()) return s;
-        if (PAN_PATTERN.matcher(s).matches() && s.length() > 4) {
+        if (PAN_PATTERN.matcher(s).matches()) {
             return "*".repeat(s.length() - 4) + s.substring(s.length() - 4);
         }
         return "***";

@@ -36,9 +36,9 @@ eventNames:
   - FUNDING_SETTLED
 
 # ---------------------------------------------------------------------------
-# Parent: SendTransactionRequest top-level fields
+# Transaction: SendTransactionRequest top-level fields
 # ---------------------------------------------------------------------------
-parent:
+transaction:
   # Core identifiers
   - { source: correlationId,               target: corltnId }
   - { source: fundingRef,                  target: refId }
