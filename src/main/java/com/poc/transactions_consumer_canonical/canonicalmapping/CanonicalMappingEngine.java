@@ -133,12 +133,27 @@ public class CanonicalMappingEngine {
     // ── Mapping helpers ───────────────────────────────────────────────────────
 
     /**
+     * Generic field-mapping entry point — applies {@code mappings} from any
+     * reflection-readable {@code source} POJO to any reflection-writable
+     * {@code target} POJO. Returns the populated target for fluent use.
+     *
+     * <p>Used by the CLEARING / SETTLEMENT flows to drive
+     * {@link com.poc.transactions_consumer_canonical.dto.SendTranClrgSetlmtRequest}
+     * directly from {@link TransactionEventAxonMessage} via the
+     * {@code clrgSetlmt:} block in the event YAML.
+     */
+    public <T> T applyTo(List<FieldMapping> mappings, Object source, T target) {
+        applyMappings(mappings, source, target);
+        return target;
+    }
+
+    /**
      * Applies each {@link FieldMapping} in the list to {@code target}.
      *
      * @return number of fields that were successfully written
      */
     private int applyMappings(List<FieldMapping> mappings,
-                               TransactionEventAxonMessage source,
+                               Object source,
                                Object target) {
         if (mappings == null) return 0;
         int count = 0;

@@ -6,11 +6,13 @@ import com.poc.transactions_consumer_canonical.metadata.MetadataRegistry;
 import com.poc.transactions_consumer_canonical.metadata.TableMetadata;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.mockito.ArgumentCaptor;
 import org.springframework.dao.EmptyResultDataAccessException;
 import org.springframework.jdbc.core.RowMapper;
 import org.springframework.jdbc.core.namedparam.MapSqlParameterSource;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
 
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
@@ -19,6 +21,7 @@ import static org.assertj.core.api.Assertions.assertThat;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.verify;
 import static org.mockito.Mockito.when;
 
 class GenericTableRepositoryTest {
@@ -47,6 +50,22 @@ class GenericTableRepositoryTest {
         when(registry.require(anyString())).thenReturn(table);
 
         repo = new GenericTableRepository(jdbc, registry, sqlBuilder, converters);
+    }
+
+    @Test
+    void upsert_bindsNonAuditColumns_andRunsMerge() {
+        Map<String, Object> payload = new HashMap<>();
+        payload.put("id", "X-1");
+        payload.put("name", "Alice");
+
+        repo.upsert("t", payload);
+
+        ArgumentCaptor<MapSqlParameterSource> params = ArgumentCaptor.forClass(MapSqlParameterSource.class);
+        verify(jdbc).update(anyString(), params.capture());
+        assertThat(params.getValue().getValue("id")).isEqualTo("X-1");
+        assertThat(params.getValue().getValue("name")).isEqualTo("Alice");
+        // audit columns are skipped during bind
+        assertThat(params.getValue().getValues()).doesNotContainKey("crteTs");
     }
 
     @Test

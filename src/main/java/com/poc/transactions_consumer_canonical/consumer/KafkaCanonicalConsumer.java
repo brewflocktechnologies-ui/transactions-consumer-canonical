@@ -9,8 +9,10 @@ import com.poc.transactions_consumer_canonical.canonicalmapping.EventPayloadSani
 import com.poc.transactions_consumer_canonical.canonicalmapping.EventTypeMapping;
 import com.poc.transactions_consumer_canonical.config.KafkaTopicConfig;
 import com.poc.transactions_consumer_canonical.dto.SendTransactionRequest;
+import com.poc.transactions_consumer_canonical.dto.SendTranClrgSetlmtRequest;
 import com.poc.transactions_consumer_canonical.messagesdto.EventEnvelope;
 import com.poc.transactions_consumer_canonical.messagesdto.TransactionEventAxonMessage;
+import com.poc.transactions_consumer_canonical.service.ClearingEventService;
 import com.poc.transactions_consumer_canonical.service.SendTransactionService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -44,12 +46,16 @@ public class KafkaCanonicalConsumer {
     private static final String OUTER_SEPARATOR = "===============================================";
     private static final String INNER_SEPARATOR = "-----------------------------------------------";
 
+    private static final String CLEARING_EVENT_TYPE = "CLEARING";
+    private static final String SETTLEMENT_EVENT_TYPE = "SETTLEMENT";
+
     private final ObjectMapper              objectMapper;
     private final CanonicalMappingRegistry  mappingRegistry;
     private final CanonicalRuleEngine       ruleEngine;
     private final EventPayloadSanitizer     payloadSanitizer;
     private final CanonicalMappingEngine    mappingEngine;
     private final SendTransactionService    sendTransactionService;
+    private final ClearingEventService      clearingEventService;
 
     @KafkaListener(
             topics  = KafkaTopicConfig.TRANSACTIONS_TOPIC,
@@ -115,6 +121,18 @@ public class KafkaCanonicalConsumer {
 
         logTransaction(txn);
 
+        // ── CLEARING / SETTLEMENT branch (dual-message 2nd leg) ──────────────
+        // Both events bypass the SendTransactionRequest path. The 5th-table
+        // request is mapped from `txn` via the clrgSetlmt: block in the YAML
+        // and handed to the service for parent-existence guard + upsert.
+        String eventType = mapping.getEventType();
+        if (CLEARING_EVENT_TYPE.equalsIgnoreCase(eventType)
+                || SETTLEMENT_EVENT_TYPE.equalsIgnoreCase(eventType)) {
+            handleClrgSetlmtEvent(mapping, txn, envelope, eventType);
+            log.info(OUTER_SEPARATOR);
+            return;
+        }
+
         // ── Step 7: apply field mappings → canonical SendTransactionRequest ───
         String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
         SendTransactionRequest canonicalReq = mappingEngine.map(mapping, txn, envelope);
@@ -144,6 +162,31 @@ public class KafkaCanonicalConsumer {
             log.error("[CONSUMER]  Failed to deserialise EventEnvelope: {}", e.getMessage());
             log.info(OUTER_SEPARATOR);
             return null;
+        }
+    }
+
+    private void handleClrgSetlmtEvent(EventTypeMapping mapping,
+                                       TransactionEventAxonMessage txn,
+                                       EventEnvelope envelope,
+                                       String eventType) {
+        String tranId = mappingEngine.extractTranId(mapping, txn, envelope);
+        SendTranClrgSetlmtRequest req = mappingEngine.applyTo(
+                mapping.getClrgSetlmt(), txn, new SendTranClrgSetlmtRequest());
+        req.setTranId(tranId);
+
+        log.info("[CONSUMER]  {} request built | tranId={} clrgSt={} setlAmt={}",
+                eventType, tranId, req.getClrgSt(), req.getSetlAmt());
+
+        try {
+            if (SETTLEMENT_EVENT_TYPE.equalsIgnoreCase(eventType)) {
+                clearingEventService.upsertSettlement(req);
+            } else {
+                clearingEventService.upsertClearing(req);
+            }
+            log.info("[CONSUMER]  {} processing complete | tranId={}", eventType, tranId);
+        } catch (Exception e) {
+            log.error("[CONSUMER]  {} upsert failed | tranId={} error={}",
+                    eventType, tranId, e.getMessage(), e);
         }
     }
 

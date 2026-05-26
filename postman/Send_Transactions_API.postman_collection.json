@@ -216,6 +216,90 @@
             "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
             "description": "eventPayload is plain text — no rectification strategy can recover it.\n\nSanitizer fires at Step 5:\n  Attempt 1 (as-is)      → FAIL\n  Attempt 2 (trim)       → FAIL\n  Attempt 3 (unwrap)     → FAIL  (doesn't start with '\"')\n  Attempt 4 (lenient)    → FAIL  (not parseable even leniently)\n\nExpect logs:\n  [SANITIZER] eventPayload is not valid JSON — starting rectification attempts\n  [SANITIZER] eventPayload is irrecoverable — message will be skipped. Preview: THIS IS NOT JSON...\n  [CONSUMER]  eventPayload is invalid and cannot be rectified — skipping\n\nNo DB write. Returns 202 to the publisher (Kafka is fire-and-forget)."
           }
+        },
+        {
+          "name": "K14. CLEARING_SETTLED — full payload (source-side field names)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"CLEARING_SERVICE\",\n  \"eventName\": \"CLEARING_SETTLED\",\n  \"eventId\": \"EVT-CLRG-001\",\n  \"correlationId\": \"CORL-PAY-001\",\n  \"eventTimestamp\": 1731664800000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T13:00:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-001\\\",\\\"clearingStatus\\\":\\\"SETTLED\\\",\\\"clearingDate\\\":\\\"2026-05-26T10:00:00\\\",\\\"acqRefNumber\\\":\\\"ACQ-ICA-REF-001\\\",\\\"rateTypeIndicator\\\":\\\"R\\\",\\\"reasonCode\\\":\\\"1000\\\",\\\"reasonCodeDesc\\\":\\\"Settled successfully\\\",\\\"ichgRateDsgnCd\\\":\\\"A\\\",\\\"ichgFee\\\":\\\"15.00\\\",\\\"busnSrvAgmt\\\":\\\"BSA-MC-001\\\",\\\"crteUserNam\\\":\\\"SYSTEM\\\",\\\"updtUserNam\\\":\\\"SYSTEM\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "CLEARING is the 2nd leg of a dual-message transaction. Run K1 (PAYMENT_INITIATED) FIRST to populate the parent SEND_TRANSACTIONS row for tranId=TXN-PAY-001, THEN run this request to populate the 5th table SEND_TRAN_CLRG_SETLMT for the same tranId.\n\nNote the eventPayload uses SOURCE field names (clearingStatus, clearingDate, acqRefNumber, rateTypeIndicator, reasonCode, reasonCodeDesc) — these match TransactionEventAxonMessage. The canonical-mapping engine renames them to the DB-aligned target fields per CLEARING.yaml's clrgSetlmt: block.\n\nFlow:\n  1. Consumer deserialises payload → TransactionEventAxonMessage\n  2. Engine applies CLEARING.yaml clrgSetlmt: mappings → SendTranClrgSetlmtRequest\n  3. Service checks parent SEND_TRANSACTIONS row exists\n  4. Service MERGEs into SEND_TRAN_CLRG_SETLMT\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=CLEARING\n  [CONSUMER]  CLEARING request built | tranId=TXN-PAY-001 clrgSt=SETTLED\n  [CLEARING] Upserting SEND_TRAN_CLRG_SETLMT for tranId=TXN-PAY-001\n  [CLEARING] Upsert complete for tranId=TXN-PAY-001"
+          }
+        },
+        {
+          "name": "K15. CLEARING_INITIATED — minimal required source fields only",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"CLEARING_SERVICE\",\n  \"eventName\": \"CLEARING_INITIATED\",\n  \"eventId\": \"EVT-CLRG-002\",\n  \"correlationId\": \"CORL-PAY-001\",\n  \"eventTimestamp\": 1731664200000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T12:50:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-001\\\",\\\"clearingStatus\\\":\\\"INITIATED\\\",\\\"clearingDate\\\":\\\"2026-05-26T09:50:00\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "Minimal CLEARING_INITIATED payload — only the NOT-NULL targets (tranId, clrgSt, clrgDtTs) are supplied via the source-side field names (clearingStatus, clearingDate). All other columns remain null."
+          }
+        },
+        {
+          "name": "K16. CLEARING — missing tranId (rejected by service)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"CLEARING_SERVICE\",\n  \"eventName\": \"CLEARING_SETTLED\",\n  \"eventId\": \"EVT-CLRG-003\",\n  \"correlationId\": \"CORL-CLRG-003\",\n  \"eventTimestamp\": 1731664800000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T13:00:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"clearingStatus\\\":\\\"SETTLED\\\",\\\"clearingDate\\\":\\\"2026-05-26T10:00:00\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "eventPayload omits tranId. The tranIdSource lookup falls back to envelope.correlationId — but if you also clear correlationId the request is rejected by the service.\n\nIn the actual default config the correlationId fills tranId, so this case in practice will use CORL-CLRG-003 as tranId and then fail the parent-existence guard (see K17). Use this entry to confirm the fallback behaviour."
+          }
+        },
+        {
+          "name": "K17. CLEARING — unknown tranId (no parent row → logged & skipped)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"CLEARING_SERVICE\",\n  \"eventName\": \"CLEARING_SETTLED\",\n  \"eventId\": \"EVT-CLRG-004\",\n  \"correlationId\": \"CORL-CLRG-004\",\n  \"eventTimestamp\": 1731664800000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T13:00:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-DOES-NOT-EXIST-999\\\",\\\"clearingStatus\\\":\\\"SETTLED\\\",\\\"clearingDate\\\":\\\"2026-05-26T10:00:00\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "tranId=TXN-DOES-NOT-EXIST-999 has no parent row in SEND_TRANSACTIONS (the PAYMENT event never arrived). Service checks parent existence first and silently drops the message.\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=CLEARING\n  [CLEARING] No parent SEND_TRANSACTIONS row for tranId=TXN-DOES-NOT-EXIST-999 — message ignored (expected the PAYMENT event to have arrived first).\n\nNo DB write."
+          }
+        },
+        {
+          "name": "K18. SETTLEMENT — populates settlement columns (source-side field names)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"SETTLEMENT_SERVICE\",\n  \"eventName\": \"SETTLEMENT\",\n  \"eventId\": \"EVT-SETL-001\",\n  \"correlationId\": \"CORL-PAY-001\",\n  \"eventTimestamp\": 1731668400000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"U\\\",\\\"timestamp\\\":\\\"2025-02-04T14:00:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-PAY-001\\\",\\\"clearingStatus\\\":\\\"SETTLED\\\",\\\"clearingDate\\\":\\\"2026-05-26T10:30:00\\\",\\\"setlDt\\\":\\\"2026-05-26\\\",\\\"setlAmt\\\":\\\"1500.00\\\",\\\"setlCurrCd\\\":\\\"USD\\\",\\\"setlServId\\\":\\\"SS-001\\\",\\\"setlIca\\\":\\\"1234567\\\",\\\"tranFileId\\\":\\\"FILE-20260526-001\\\",\\\"updtUserNam\\\":\\\"SYSTEM\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "SETTLEMENT is the 3rd leg of a dual-message-style flow. Run K1 (PAYMENT_INITIATED) FIRST to populate the parent SEND_TRANSACTIONS row for tranId=TXN-PAY-001. Then run K14 (CLEARING_SETTLED) to populate the clearing columns. Finally run this request to merge the settlement columns into the SAME SEND_TRAN_CLRG_SETLMT row (PK=TRAN_ID).\n\nThe eventPayload uses source-side field names (setlDt, setlAmt, setlCurrCd, setlServId, setlIca, tranFileId) which map identically to the target field names in this case. clearingStatus / clearingDate are also propagated so the row stays consistent.\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=SETTLEMENT\n  [CONSUMER]  SETTLEMENT request built | tranId=TXN-PAY-001 clrgSt=SETTLED setlAmt=1500.00\n  [SETTLEMENT] Upserting SEND_TRAN_CLRG_SETLMT for tranId=TXN-PAY-001\n  [SETTLEMENT] Upsert complete for tranId=TXN-PAY-001"
+          }
+        },
+        {
+          "name": "K19. SETTLEMENT — unknown tranId (no parent row → logged & skipped)",
+          "request": {
+            "method": "POST",
+            "header": [{ "key": "Content-Type", "value": "application/json" }],
+            "body": {
+              "mode": "raw",
+              "options": { "raw": { "language": "json" } },
+              "raw": "{\n  \"regulatoryRegion\": \"US\",\n  \"eventSource\": \"SETTLEMENT_SERVICE\",\n  \"eventName\": \"SETTLEMENT\",\n  \"eventId\": \"EVT-SETL-002\",\n  \"correlationId\": \"CORL-SETL-002\",\n  \"eventTimestamp\": 1731668400000,\n  \"eventMetadata\": \"{\\\"operation\\\":\\\"A\\\",\\\"timestamp\\\":\\\"2025-02-04T14:00:00Z\\\"}\",\n  \"eventPayload\": \"{\\\"tranId\\\":\\\"TXN-DOES-NOT-EXIST-998\\\",\\\"setlDt\\\":\\\"2026-05-26\\\",\\\"setlAmt\\\":\\\"250.00\\\",\\\"setlCurrCd\\\":\\\"USD\\\"}\"\n}"
+            },
+            "url": { "raw": "{{baseUrl}}/api/publish", "host": ["{{baseUrl}}"], "path": ["api","publish"] },
+            "description": "Same guard as CLEARING — tranId=TXN-DOES-NOT-EXIST-998 has no parent SEND_TRANSACTIONS row, so the service drops the message after a single WARN log.\n\nExpect logs:\n  [CONSUMER]  Matched mapping | eventType=SETTLEMENT\n  [SETTLEMENT] No parent SEND_TRANSACTIONS row for tranId=TXN-DOES-NOT-EXIST-998 — message ignored.\n\nNo DB write."
+          }
         }
       ]
     },

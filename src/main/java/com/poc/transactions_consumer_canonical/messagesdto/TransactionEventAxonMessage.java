@@ -290,6 +290,10 @@ public class TransactionEventAxonMessage {
     private String setlCurrCd;
     private String setlMMDT;
     private String setlServId;
+    private String setlDt;
+    private String setlIca;
+    private String tranFileId;
+    private String busnSrvAgmt;
 
     // =====================================================
     // SPONSOR BANK

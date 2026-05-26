@@ -72,6 +72,13 @@ public class EventTypeMapping {
     private List<AddrDtlGroup> addrDtl;
 
     /**
+     * Mappings into {@code SendTranClrgSetlmtRequest} (1:1 child, 5th table).
+     * Used by CLEARING and SETTLEMENT events; the standard PAYMENT/FUNDING flows
+     * leave this null.
+     */
+    private List<FieldMapping> clrgSetlmt;
+
+    /**
      * Optional filtering rules evaluated before the mapping pipeline runs.
      * A {@code null} rules block means "allow all messages" for this event type.
      *

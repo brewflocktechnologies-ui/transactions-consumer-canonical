@@ -26,6 +26,8 @@ public class SendTransactionServiceImpl implements SendTransactionService {
     private final SendTranDtlRepository dtlRepo;
     private final SendRecipDtlRepository recipRepo;
     private final SendTranAddrDtlRepository addrRepo;
+    /** Metadata-driven access to SEND_TRAN_CLRG_SETLMT (no typed repository — fetched as a Map). */
+    private final com.poc.transactions_consumer_canonical.repository.GenericTableRepository genericRepo;
     /** Used by {@link #toParentModel} and {@link #toResponse} for field-name-based copying. */
     private final ObjectMapper objectMapper;
 
@@ -95,11 +97,16 @@ public class SendTransactionServiceImpl implements SendTransactionService {
         SendTransaction parent = txnRepo.findById(tranId)
                 .orElseThrow(() -> new ResourceNotFoundException("SendTransaction", tranId));
 
+        Map<String, Object> clrgSetlmtRow = genericRepo
+                .findByPk("send-tran-clrg-setlmt", tranId)
+                .orElse(null);
+
         return toResponse(
                 parent,
                 dtlRepo.findByTranId(tranId).orElse(null),
                 recipRepo.findByTranId(tranId).orElse(null),
-                addrRepo.findByTranId(tranId)
+                addrRepo.findByTranId(tranId),
+                clrgSetlmtRow
         );
     }
 
@@ -262,12 +269,17 @@ public class SendTransactionServiceImpl implements SendTransactionService {
     private SendTransactionResponse toResponse(SendTransaction p,
                                                SendTranDtl dtl,
                                                SendRecipDtl recip,
-                                               List<SendTranAddrDtl> addrs) {
+                                               List<SendTranAddrDtl> addrs,
+                                               Map<String, Object> clrgSetlmtRow) {
         Map<String, Object> map = objectMapper.convertValue(p, Map.class);
         SendTransactionResponse resp = objectMapper.convertValue(map, SendTransactionResponse.class);
         resp.setTranDtl(dtl != null ? toDtlResponse(dtl) : null);
         resp.setRecipDtl(recip != null ? toRecipResponse(recip) : null);
         resp.setAddrDtl(addrs.stream().map(this::toAddrResponse).toList());
+        if (clrgSetlmtRow != null) {
+            resp.setClearing(objectMapper.convertValue(clrgSetlmtRow, SendTranClrgResponse.class));
+            resp.setSettlement(objectMapper.convertValue(clrgSetlmtRow, SendTranSetlmtResponse.class));
+        }
         return resp;
     }
 

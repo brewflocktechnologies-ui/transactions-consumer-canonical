@@ -28,7 +28,7 @@ class CoverageBoostingTests {
         assertThat(rc.getAllowedEventSources()).contains("A");
 
         EventTypeMapping etm = new EventTypeMapping("ET", List.of("e1"), "tran", "T",
-                List.of(fm), List.of(fm), List.of(fm), List.of(ag), rc);
+                List.of(fm), List.of(fm), List.of(fm), List.of(ag), List.of(fm), rc);
         assertThat(etm.getEventType()).isEqualTo("ET");
         assertThat(etm.toString()).contains("ET");
     }

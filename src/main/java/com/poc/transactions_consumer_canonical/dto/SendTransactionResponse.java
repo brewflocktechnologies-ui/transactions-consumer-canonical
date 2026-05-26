@@ -68,4 +68,10 @@ public class SendTransactionResponse {
     // ── Child 1:many : SEND_TRAN_ADDR_DTL ────────────────────
     @Builder.Default
     private List<SendTranAddrDtlResponse> addrDtl = new ArrayList<>();
+
+    // ── Child 1:1 : SEND_TRAN_CLRG_SETLMT (clearing-leg view) ─
+    private SendTranClrgResponse clearing;
+
+    // ── Child 1:1 : SEND_TRAN_CLRG_SETLMT (settlement-leg view) ─
+    private SendTranSetlmtResponse settlement;
 }

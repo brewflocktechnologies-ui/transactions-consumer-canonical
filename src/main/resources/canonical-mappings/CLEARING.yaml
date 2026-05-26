@@ -1,0 +1,68 @@
+# =============================================================================
+# Canonical mapping: CLEARING event type
+#
+# CLEARING is the 2nd leg of a dual-message transaction:
+#   PAYMENT event  → populates SEND_TRANSACTIONS + 3 child tables
+#   CLEARING event → upserts SEND_TRAN_CLRG_SETLMT (the 5th table) for the same tranId
+#
+# Flow:
+#   1. KafkaCanonicalConsumer deserialises the payload to TransactionEventAxonMessage
+#   2. CanonicalMappingEngine.applyTo(clrgSetlmt mappings, txn, SendTranClrgSetlmtRequest)
+#   3. ClearingEventService verifies the parent SEND_TRANSACTIONS row exists,
+#      converts the typed request → Map, MERGEs into SEND_TRAN_CLRG_SETLMT.
+#
+# Source-field renaming workflow:
+#   Just change the `source:` value below. No Java changes required as long as
+#   the source field already exists on TransactionEventAxonMessage; otherwise
+#   also add it under the matching section in TransactionEventAxonMessage.
+#
+# Adding a new column to SEND_TRAN_CLRG_SETLMT:
+#   1. Add the column row in metadata/send_tran_clrg_setlmt.yaml
+#   2. Add the matching field in dto/SendTranClrgSetlmtRequest
+#   3. Add a mapping line below (and/or in SETTLEMENT.yaml)
+#   4. If the source side doesn't already carry it, also add the field on
+#      messagesdto/TransactionEventAxonMessage
+# =============================================================================
+
+eventType: CLEARING
+tranIdSource: tranId
+tranType: CLEARING
+
+rules:
+  allowedEventSources:
+    - CLEARING_SERVICE
+    - AIS_SERVICE
+    - PAYMENT_HUB
+  allowedOperations:
+    - A
+    - U
+
+eventNames:
+  - CLEARING_INITIATED
+  - CLEARING_COMPLETED
+  - CLEARING_SETTLED
+  - CLEARING_FAILED
+  - CLEARING_REVERSED
+
+# ---------------------------------------------------------------------------
+# clrgSetlmt: SendTranClrgSetlmtRequest (1:1 child, 5th table)
+# source: field on TransactionEventAxonMessage
+# target: field on SendTranClrgSetlmtRequest (= jsonName in send_tran_clrg_setlmt.yaml)
+# ---------------------------------------------------------------------------
+clrgSetlmt:
+  # Clearing status & timestamp (DB-enforced NOT NULL)
+  - { source: clearingStatus,         target: clrgSt }
+  - { source: clearingDate,           target: clrgDtTs }
+
+  # Acquirer / rate / message reason
+  - { source: acqRefNumber,           target: acqIcaRefTxt }
+  - { source: rateTypeIndicator,      target: rateTypeInd }
+  - { source: reasonCode,             target: msgRsnCd }
+  - { source: reasonCodeDesc,         target: msgRsnDesc }
+  - { source: ichgRateDsgnCd,         target: ichgRateDsgnCd }
+  - { source: ichgFee,                target: ichgFee }
+  - { source: busnSrvAgmt,            target: busnSrvAgmt }
+
+  # Audit (user)
+  - { source: crteUserNam,            target: crteUserNam }
+  - { source: updtUserNam,            target: updtUserNam }

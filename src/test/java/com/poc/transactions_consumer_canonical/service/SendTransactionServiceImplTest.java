@@ -12,6 +12,7 @@ import com.poc.transactions_consumer_canonical.model.SendRecipDtl;
 import com.poc.transactions_consumer_canonical.model.SendTranAddrDtl;
 import com.poc.transactions_consumer_canonical.model.SendTranDtl;
 import com.poc.transactions_consumer_canonical.model.SendTransaction;
+import com.poc.transactions_consumer_canonical.repository.GenericTableRepository;
 import com.poc.transactions_consumer_canonical.repository.SendRecipDtlRepository;
 import com.poc.transactions_consumer_canonical.repository.SendTranAddrDtlRepository;
 import com.poc.transactions_consumer_canonical.repository.SendTranDtlRepository;
@@ -43,6 +44,7 @@ class SendTransactionServiceImplTest {
     private SendTranDtlRepository dtlRepo;
     private SendRecipDtlRepository recipRepo;
     private SendTranAddrDtlRepository addrRepo;
+    private GenericTableRepository genericRepo;
     private SendTransactionServiceImpl service;
 
     @BeforeEach
@@ -51,7 +53,9 @@ class SendTransactionServiceImplTest {
         dtlRepo = mock(SendTranDtlRepository.class);
         recipRepo = mock(SendRecipDtlRepository.class);
         addrRepo = mock(SendTranAddrDtlRepository.class);
-        service = new SendTransactionServiceImpl(txnRepo, dtlRepo, recipRepo, addrRepo,
+        genericRepo = mock(GenericTableRepository.class);
+        when(genericRepo.findByPk(eq("send-tran-clrg-setlmt"), anyString())).thenReturn(Optional.empty());
+        service = new SendTransactionServiceImpl(txnRepo, dtlRepo, recipRepo, addrRepo, genericRepo,
                 new ObjectMapper().registerModule(new JavaTimeModule()));
         service.setSelf(service); // route findById back through this same instance for tests
     }
@@ -202,6 +206,42 @@ class SendTransactionServiceImplTest {
         assertThat(out.getTranDtl()).isNotNull();
         assertThat(out.getRecipDtl().getSendFirstNam()).isEqualTo("A");
         assertThat(out.getAddrDtl()).hasSize(1);
+        // No SEND_TRAN_CLRG_SETLMT row → clearing & settlement remain null
+        assertThat(out.getClearing()).isNull();
+        assertThat(out.getSettlement()).isNull();
+    }
+
+    @Test
+    void findById_includesClearingAndSettlement_whenClrgSetlmtRowExists() {
+        when(txnRepo.findById("X")).thenReturn(
+                Optional.of(SendTransaction.builder().tranId("X").tranType("SEND").build()));
+        when(dtlRepo.findByTranId("X")).thenReturn(Optional.empty());
+        when(recipRepo.findByTranId("X")).thenReturn(Optional.empty());
+        when(addrRepo.findByTranId("X")).thenReturn(List.of());
+
+        java.util.Map<String, Object> clrgSetlmtRow = new java.util.HashMap<>();
+        clrgSetlmtRow.put("tranId", "X");
+        clrgSetlmtRow.put("clrgSt", "SETTLED");
+        clrgSetlmtRow.put("clrgDtTs", LocalDateTime.of(2026, 5, 26, 10, 0));
+        clrgSetlmtRow.put("acqIcaRefTxt", "ACQ-REF-1");
+        clrgSetlmtRow.put("setlDt", LocalDate.of(2026, 5, 26));
+        clrgSetlmtRow.put("setlAmt", new BigDecimal("1500.00"));
+        clrgSetlmtRow.put("setlCurrCd", "USD");
+        clrgSetlmtRow.put("tranFileId", "FILE-20260526-001");
+        when(genericRepo.findByPk("send-tran-clrg-setlmt", "X")).thenReturn(Optional.of(clrgSetlmtRow));
+
+        SendTransactionResponse out = service.findById("X");
+
+        assertThat(out.getClearing()).isNotNull();
+        assertThat(out.getClearing().getClrgSt()).isEqualTo("SETTLED");
+        assertThat(out.getClearing().getAcqIcaRefTxt()).isEqualTo("ACQ-REF-1");
+        assertThat(out.getClearing().getClrgDtTs()).isEqualTo(LocalDateTime.of(2026, 5, 26, 10, 0));
+
+        assertThat(out.getSettlement()).isNotNull();
+        assertThat(out.getSettlement().getSetlAmt()).isEqualByComparingTo("1500.00");
+        assertThat(out.getSettlement().getSetlCurrCd()).isEqualTo("USD");
+        assertThat(out.getSettlement().getTranFileId()).isEqualTo("FILE-20260526-001");
+        assertThat(out.getSettlement().getSetlDt()).isEqualTo(LocalDate.of(2026, 5, 26));
     }
 
     private static <T> T any() { return org.mockito.ArgumentMatchers.any(); }
